@@ -1,6 +1,16 @@
 # 團隊協作與開發指南 (Contributing Guidelines)
 
-## 2. Git 協作與分支規範
+## 0. 開發標準流程 (Daily Workflow)
+為了確保大家寫程式時不會互相打架，請所有人每天開發時，嚴格遵守以下四部曲：
+
+1. **出發前先同步**：每天開始寫扣前，先切回 `main` 拉取最新進度，再切回自己的功能分支。
+2. **專心在自己的分支寫**：絕對不在 `main` 寫扣。
+3. **推扣前先本地格式化與測試**：
+   - 前端：執行 `npm run format` 確保排版通過 CI 門檻。
+   - 根目錄：執行 `act push` 確保本機模擬全綠。
+4. **開 PR**：推上 GitHub 後開 Pull Request
+
+## 1. Git 協作與分支規範
 1. **禁止直接 Push 到 `main` 分支**。所有新功能與修復請從 `main` 拉出新分支，如果把新功能PR到`main`，在群組通知其他人pull下新版的`main`
 2. 一個branch一次一個人做 (不要同時在同一個branch裡面工作)
 3. **分支命名原則**：
@@ -24,7 +34,7 @@ Commit Message 盡量這樣寫會比較清楚：
 - **前端 (Frontend)**：請在 `frontend/` 目錄下執行 `npm run format` 來自動排版。
 - **後端 (Backend)**：請確保符合 PEP 8 規範，提交前可手動執行 `flake8` 檢查。
 
-### 💡 常用 Git 指令 (Git Cheatsheet)
+### 💡 (附錄) 常用 Git 指令 (Git Cheatsheet)
 #### 1. 開始開發新功能（開分支）
 ```bash
 # 確保自己人在 main 分支，並同步線上最新進度
@@ -85,80 +95,4 @@ git stash pop
 git status
 ```
 
-
-## 1. 專案開發目錄架構 Project Directory Structure
-
-用前後端分離的架構，所有的程式碼集中在同一個 Repo 裡，請根據你要開發的功能，進入對應的資料夾作業。
-
-以下是我們專案的完整目錄結構：
-
-```text
-Cloud-Native-Group-11-Final-Project/
-│
-├── .github/                 # 放 CI/CD 的 yaml 檔
-│   └── workflows/
-│       ├── ci-frontend.yaml
-│       ├── ci-backend.yaml
-│       └── cd.yaml
-│
-├── docker-compose.yml       # CD 部署用的總指揮
-├── .gitignore               # Git 忽略檔案清單 (排除了 .env、__pycache__ 與本地 log 等)
-├── README.md                # 專案的總體介紹、系統前後端架構圖、小組成員分工，以及如何一鍵啟動所有服務（例如說明如何使用 docker-compose up）。
-├── CONTRIBUTING.md          # 
-│
-├── frontend/                # Typescript/Javascript
-│   ├── package.json
-│   ├── src/
-│   ├── README.md                # 前端說明文件 (如何執行 npm install、如何啟動本地開發伺服器（Local Dev Server）、前端的環境變數設定等。)
-│   └── ...
-│
-└── backend/                 # Python/...?
-    │
-    ├── config/                  # 系統設定檔
-    │   ├── __init__.py
-    │   └── settings.py          # 資料庫、排程、權限等環境變數與全域設定
-    │
-    ├── src/                     # 核心原始碼 (Source Code)
-    │   ├── __init__.py
-    │   │
-    │   ├── api/                 # 使用者層 / 控制層：API 服務 (FastAPI)
-    │   │   ├── __init__.py
-    │   │   ├── routers/         # API 路由模組
-    │   │   │   ├── auth.py      # 使用者註冊/登入管理
-    │   │   │   ├── jobs.py      # Job 註冊、修改、刪除與手動觸發 
-    │   │   │   └── history.py   # Job 執行歷史紀錄查詢與篩選 
-    │   │   └── dependencies.py  # API 權限驗證與角色宣告 (Developer / Operator)
-    │   │
-    │   ├── scheduler/           # 控制層：排程服務 (Scheduler Service)
-    │   │   ├── __init__.py
-    │   │   └── cron_scheduler.py# 第一期：單一排程進程，定時掃描 DB 並派發到期任務
-    │   │
-    |   ├── worker/              # 執行層：任務執行單元 (Data Plane)
-    │   │   ├── __init__.py
-    │   │   ├── executor.py      # 第一期：In-Process Thread 任務執行與超時控制
-    │   │   └── tasks/           # 實際執行的任務類型定義
-    │   │       ├── __init__.py
-    │   │       ├── http_task.py # 呼叫外部 REST API 任務
-    │   │       └── shell_task.py# 執行 Linux Shell Script 任務
-    │   │
-    │   ├── database/            # 資料底層 (Metadata Database)
-    │   │   ├── __init__.py
-    │   │   ├── connection.py    # 資料庫連線實例與 Session 管理 
-    │   │   └── models.py        # 資料庫 Schema 模型 (Users, Jobs, Executions 等)
-    │   │
-    │   └── utils/               # 工具庫 (Utility Functions)
-    │       ├── __init__.py
-    │       ├── cycle_detection.py # DAG 有向無環圖環狀偵測演算法
-    │       └── logger.py        # 負責將 Worker 執行日誌寫入本地硬碟 (EBS Storage)
-    │
-    ├── tests/                   # 自動化測試單元 (Unit & Integration Tests)
-    │   ├── __init__.py
-    │   ├── test_api.py          # API 路由功能測試
-    │   └── test_scheduler.py    # 排程與相依性檢查邏輯測試
-    │
-    ├── .env                     # 本地環境變數設定檔（內含資料庫密碼等，不進入 Git 追蹤）
-    ├── README.md                # 後端說明文件 (如何建立 Python 虛擬環境、執行 pip install -r requirements.txt、資料庫連線的 .env 怎麼填、如何跑 pytest、以及 FastAPI 的 API 文件路徑等後端專屬資訊。)
-    └── requirements.txt         # Python 套件依賴清單
-
-```
 
