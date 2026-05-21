@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  frontend:
+    # 告訴 Compose 去 frontend 資料夾找 Dockerfile 來 Build
+    build: ./frontend
+    container_name: group11-frontend
+    ports:
+      - "3000:3000"
+
+  backend:
+    # 告訴 Compose 去 backend 資料夾找 Dockerfile 來 Build
+    build: ./backend
+    container_name: group11-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app  # 把本地程式碼掛載進去，方便開發

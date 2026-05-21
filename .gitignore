@@ -1,0 +1,28 @@
+# ========================
+# 全域與環境變數 (Global)
+# ========================
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
+
+# ========================
+# 後端 (Python)
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.sqlite3
+
+# ========================
+# 測試與覆蓋率 (Testing)
+# ========================
+.pytest_cache/
+.coverage
+htmlcov/
