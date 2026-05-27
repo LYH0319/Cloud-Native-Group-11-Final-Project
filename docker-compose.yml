@@ -16,3 +16,29 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app  # 把本地程式碼掛載進去，方便開發
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    
+  db:
+    image: mysql:8.4
+    container_name: group11-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    env_file:
+      - ./backend/.env
+    environment:
+      TZ: Asia/Taipei
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+volumes:
+  mysql_data:
