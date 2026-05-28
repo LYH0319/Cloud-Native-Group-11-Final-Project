@@ -27,7 +27,7 @@ docker compose up -d
 pip install -r ./backend/requirements.txt
 
 # 2. 執行資料庫模型測試
-python ./backend/src/database/test_model.py
+python ./backend/src/database/demo_model.py
 ```
 
 (💡 提示：如果看到終端機印出「✅ 成功新增 User！」或成功撈出 User 資訊，表示成功)
