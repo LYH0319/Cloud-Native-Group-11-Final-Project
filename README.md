@@ -4,10 +4,10 @@
 | 姓名 / GitHub | 學號 | 主要負責模組 / 職責 |
 | :--- | :--- | :--- |
 | **謝羽媞** (@yosoramagician) | 112062315 | 前端 UI 介面設計、使用者註冊 / 登入、Job 註冊與管理 |
-| **李沅籈** (@stellae2718) | 112062207 | CI/CD、排程規則設定、任務相依性管理 |
+| **李沅籈** (@stellae2718) | 112062207 | CI/CD、排程規則設定、資料庫設定 |
 | **謝絜淩** (@Chiehling0214) | 112062220 | 執行結果回報、執行歷史查詢、手動觸發 |
 | **廖宇嬅** (@LYH0319) | 112062301 | 任務派發、任務執行、長時間任務處理  |
-| **蔡佳倩** (@chien1201) | 112062308 | 任務派發、任務執行、長時間任務處理  |
+| **蔡佳倩** (@chien1201) | 112062308 | 任務派發、任務執行、長時間任務處理、任務相依性管理  |
 
 ## 🛠️ CI/CD 本地測試指南 (Local CI/CD Testing)
 
@@ -46,6 +46,27 @@
 	act -W .github/workflows/ci-backend.yaml
     ```
 4. local ci test 如果fail在`Test report`是正常的喔！可以直接push了
+
+## 🛠️ database CRUD 使用指南
+
+目前已完成 User, Job, Execution 的 CRUD 功能。
+若需使用，請直接從 `src.database.crud` 引入對應函式。
+
+### 使用建議
+- 請務必將 `db: Session` 作為第一個參數傳入。
+- 對於涉及狀態變更的操作，請優先使用商業邏輯導向的函數（如 `change_job_status`），而非直接呼叫 `update_job`。
+- 若需新增測試，請參考 `tests/database/test_crud.py` 的 AAA 結構。
+
+### 新增功能
+如果要請求新增 CRUD 功能，請複製並填寫以下內容告訴我：
+
+	```
+    功能名稱：(例如：查詢某個時間區間內的執行紀錄)
+    目標資料表：(例如：Execution)
+    參數需求：(需要輸入什麼資料？回傳什麼結果？)
+    商業邏輯：(是否有特殊的篩選條件或狀態轉換？)
+    優先級：(High / Medium / Low)
+	```
 
 ## 📂 專案開發目錄架構 Project Directory Structure
 
