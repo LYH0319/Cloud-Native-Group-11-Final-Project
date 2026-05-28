@@ -15,8 +15,10 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, echo=True)
 # create sessionmaker
 SessionLocal = sessionmaker(engine)
 
+
 class Base(MappedAsDataclass, DeclarativeBase):
     pass
+
 
 def get_db():
     db = SessionLocal()
@@ -29,10 +31,11 @@ def get_db():
     finally:
         db.close()
 
+
 def init_db():
     Base.metadata.create_all(engine)
     print("Initialized database tables!")
-    
+
     from sqlalchemy import select
     from models import User, UserRole
 
@@ -44,18 +47,16 @@ def init_db():
 
         if not admin_exists:
             print("No Admin found. Creating default Admin user...")
-            
+
             # 建立預設的超級管理員 (你可以跟組員討論預設的員編要叫什麼)
             default_admin = User(
-                employee_id="admin_000", 
-                username="System Admin",
-                role=UserRole.ADMIN
+                employee_id="admin_000", username="System Admin", role=UserRole.ADMIN
             )
-            
+
             db.add(default_admin)
             db.commit()
             print("✅ Default Admin user created successfully!")
-            
+
     except Exception as e:
         print(f"❌ Error creating default admin: {e}")
         db.rollback()

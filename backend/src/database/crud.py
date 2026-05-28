@@ -1,13 +1,22 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
-from src.database.models import User, UserRole, HttpMethod, JobStatus, ScheduleType, Job
-from typing import Any
-from datetime import datetime
+from src.database.models import (
+    User,
+    UserRole,
+    JobStatus,
+    ScheduleType,
+    Job,
+    Execution,
+    ExecutionStatus,
+    TriggerType,
+)
+from datetime import datetime, timezone
 from src.database import schemas
 
 # ==========================================
 #                  USER CRUD
 # ==========================================
+
 
 def create_user(db: Session, user_in: schemas.UserCreate) -> User:
     """
@@ -23,16 +32,15 @@ def create_user(db: Session, user_in: schemas.UserCreate) -> User:
         User: The newly created user object.
     """
     new_user = User(
-        employee_id=user_in.employee_id, 
-        username=user_in.username, 
-        role=user_in.role
+        employee_id=user_in.employee_id, username=user_in.username, role=user_in.role
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return new_user
 
-def get_user_by_user_id(db:Session, user_id: str) -> User | None:
+
+def get_user_by_user_id(db: Session, user_id: str) -> User | None:
     """
     Retrieves a user by their unique user ID.
 
@@ -46,7 +54,7 @@ def get_user_by_user_id(db:Session, user_id: str) -> User | None:
     return db.scalar(select(User).where(User.user_id == user_id))
 
 
-def get_user_by_employee_id(db:Session, employee_id: str) -> User | None:
+def get_user_by_employee_id(db: Session, employee_id: str) -> User | None:
     """
     Retrieves a user by their unique employee ID.
 
@@ -59,7 +67,8 @@ def get_user_by_employee_id(db:Session, employee_id: str) -> User | None:
     """
     return db.scalar(select(User).where(User.employee_id == employee_id))
 
-def get_users(db:Session, skip: int = 0, limit: int = 100) -> list[User]:
+
+def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
     """
     Retrieves a list of all active users with pagination.
 
@@ -74,7 +83,12 @@ def get_users(db:Session, skip: int = 0, limit: int = 100) -> list[User]:
     Returns:
         list[User]: A list of active user objects.
     """
-    return list(db.scalars(select(User).where(User.is_active == True).offset(skip).limit(limit)).all())
+    return list(
+        db.scalars(
+            select(User).where(User.is_active).offset(skip).limit(limit)
+        ).all()
+    )
+
 
 def change_user_role(db: Session, user_id: int, new_role: UserRole) -> User | None:
     """
@@ -89,14 +103,15 @@ def change_user_role(db: Session, user_id: int, new_role: UserRole) -> User | No
         User | None: The updated user object, or None if the user does not exist.
     """
     user = db.scalar(select(User).where(User.user_id == user_id))
-    
+
     if not user:
         return None
-    
+
     user.role = new_role
     db.commit()
     db.refresh(user)
     return user
+
 
 def delete_user(db: Session, user_id: int) -> bool:
     """
@@ -114,23 +129,25 @@ def delete_user(db: Session, user_id: int) -> bool:
         bool: True if the user was successfully soft-deleted, False if the user was not found.
     """
     user = db.scalar(select(User).where(User.user_id == user_id))
-    
-    if not user or user.is_active == False:
+
+    if not user or not user.is_active:
         return False
-    
+
     user.is_active = False
     db.commit()
     return True
+
 
 # ==========================================
 #                  JOB CRUD
 # ==========================================
 
+
 def create_job(
     db: Session,
-    owner_id: int, 
-    job_in: schemas.JobCreate, 
-    next_run_time: datetime | None = None
+    owner_id: int,
+    job_in: schemas.JobCreate,
+    next_run_time: datetime | None = None,
 ) -> Job:
     """
     Creates a new HTTP request job in the database.
@@ -146,14 +163,14 @@ def create_job(
         headers (dict | None, optional): HTTP headers for the request. Defaults to None.
         body (dict | None, optional): JSON payload for the request. Defaults to None.
         cron_expression (str | None, optional): The CRON schedule string (required if RECURRING). Defaults to None.
-        
+
     Note:
         The job 'status' is automatically set to ACTIVE by the database model.
 
     Returns:
         Job: The newly created job object.
     """
-    
+
     new_job = Job(
         owner_id=owner_id,
         job_name=job_in.job_name,
@@ -164,12 +181,13 @@ def create_job(
         has_dependency=job_in.has_dependency,
         schedule_type=job_in.schedule_type,
         cron_expression=job_in.cron_expression,
-        next_run_time=next_run_time
+        next_run_time=next_run_time,
     )
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
     return new_job
+
 
 def get_job_by_id(db: Session, job_id: int) -> Job | None:
     """
@@ -183,13 +201,16 @@ def get_job_by_id(db: Session, job_id: int) -> Job | None:
         Job | None: The job object if found, otherwise None.
     """
     return db.scalar(select(Job).where(Job.job_id == job_id))
-    
-def get_jobs_by_owner_id(db: Session, owner_id: int, skip: int = 0, limit: int = 100) -> list[Job]:
+
+
+def get_jobs_by_owner_id(
+    db: Session, owner_id: int, skip: int = 0, limit: int = 100
+) -> list[Job]:
     """
     Retrieves a list of jobs owned by a specific user with pagination.
 
     Note:
-        This function returns all jobs belonging to the user, regardless of their status 
+        This function returns all jobs belonging to the user, regardless of their status
         (including ACTIVE, DISABLED, and DELETED). The frontend can filter them if needed.
 
     Args:
@@ -201,16 +222,21 @@ def get_jobs_by_owner_id(db: Session, owner_id: int, skip: int = 0, limit: int =
     Returns:
         list[Job]: A list of job objects owned by the specified user.
     """
-    return list(db.scalars(select(Job).where(Job.owner_id == owner_id).offset(skip).limit(limit)).all())
+    return list(
+        db.scalars(
+            select(Job).where(Job.owner_id == owner_id).offset(skip).limit(limit)
+        ).all()
+    )
+
 
 def get_active_jobs(
-		db: Session,
-		schedule_type: ScheduleType | None = None,
-		target_time: datetime | None = None,
-		skip: int = 0,
-		limit: int = 100,
-		for_update: bool = False
-    ) -> list[Job]:
+    db: Session,
+    schedule_type: ScheduleType | None = None,
+    target_time: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+    for_update: bool = False,
+) -> list[Job]:
     """
     Retrieves a batch of ACTIVE jobs that are ready to be executed.
 
@@ -218,41 +244,268 @@ def get_active_jobs(
         db (Session): The database session.
         schedule_type (ScheduleType | None): Filter by ONE_TIME or RECURRING. Defaults to None.
         target_time (datetime | None): The evaluation time. If None, uses the current database time.
-        skip (int): 
+        skip (int):
         skip (int, optional): The number of records to skip. Defaults to 0.
         limit (int, optional): The maximum number of records to return. Defaults to 100.
-		for_update (bool): If True, locks the selected rows for execution (skip_locked=True).
+                for_update (bool): If True, locks the selected rows for execution (skip_locked=True).
                            Should ONLY be True when called by the background scheduler.
-                           
+
     Returns:
         list[Job]: A list of job objects locked for execution.
     """
-    
+
     check_time = target_time if target_time else func.now()
-    
+
     conditions = [
-		Job.status == JobStatus.ACTIVE,
-		Job.next_run_time <= check_time,
-	]
+        Job.status == JobStatus.ACTIVE,
+        Job.next_run_time <= check_time,
+    ]
     if schedule_type:
         conditions.append(Job.schedule_type == schedule_type)
-        
+
     stm = select(Job).where(*conditions).offset(skip).limit(limit)
-    
+
     if for_update:
         stm = stm.with_for_update(skip_locked=True)
-    
+
     return list(db.scalars(stm).all())
+
 
 def get_all_jobs(db: Session, skip: int = 0, limit: int = 100) -> list[Job]:
     """
     Retrieves a list of all jobs in the system with pagination.
-    
+
     Note:
         This is typically used by System Administrators for dashboard monitoring.
     """
     return list(db.scalars(select(Job).offset(skip).limit(limit)).all())
 
+
+def update_job(db: Session, job_id: int, job_in: schemas.JobUpdate) -> Job | None:
+    """
+    Updates an existing job's configuration.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal primary key of the job to update.
+        job_in (schemas.JobUpdate): The validated data containing the fields to update.
+
+    Returns:
+        Job | None: The updated job object, or None if the job does not exist.
+    """
+    # Step 1: Retrieve the existing job from the database
+    job = db.scalar(select(Job).where(Job.job_id == job_id))
+
+    if not job:
+        return None
+
+    # Step 2: Convert Pydantic model to a dictionary, ignoring unset fields
+    update_data = job_in.model_dump(exclude_unset=True)
+
+    # Step 3: Iterate through the dictionary and update the SQLAlchemy model
+    for field, value in update_data.items():
+        setattr(job, field, value)
+
+    # Step 4: Save changes to the database
+    db.commit()
+    db.refresh(job)
+
+    return job
+
+
+def change_job_status(db: Session, job_id: int, new_status: JobStatus) -> Job | None:
+    """
+    Changes the active state of a job (e.g., pausing or resuming).
+
+    Note:
+        This is a lightweight update specifically for toggling a job between
+        ACTIVE and DISABLED states without requiring a full JobUpdate schema.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal primary key of the job.
+        new_status (JobStatus): The new status to apply.
+
+    Returns:
+        Job | None: The updated job object, or None if the job does not exist.
+    """
+    job = db.scalar(select(Job).where(Job.job_id == job_id))
+
+    if not job:
+        return None
+
+    job.status = new_status
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def delete_job(db: Session, job_id: int) -> bool:
+    """
+    Performs a soft delete on a specific job.
+
+    Note:
+        This updates the job's status to JobStatus.DELETED.
+        It does not permanently remove the record from the database
+        in order to preserve execution history and log references.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal primary key of the job to delete.
+
+    Returns:
+        bool: True if the job was successfully soft-deleted, False if the job was not found.
+    """
+    job = db.scalar(select(Job).where(Job.job_id == job_id))
+
+    if not job or job.status == JobStatus.DELETED:
+        return False
+
+    job.status = JobStatus.DELETED
+    db.commit()
+    return True
+
+
+# ==========================================
+#               EXECUTION CRUD
+# ==========================================
+
+
+def create_execution(db: Session, job_id: int, trigger_type: TriggerType) -> Execution:
+    """
+    Creates a new execution record for a specific job.
+
+    Note:
+        The execution status defaults to PENDING. This is typically called
+        when the scheduler or a user manually triggers a job.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal primary key of the job being executed.
+        trigger_type (TriggerType): Indicates if it was triggered by SCHEDULER or MANUAL.
+
+    Returns:
+        Execution: The newly created execution object.
+    """
+    new_exec = Execution(job_id=job_id, trigger_type=trigger_type)
+    db.add(new_exec)
+    db.commit()
+    db.refresh(new_exec)
+    return new_exec
+
+
+def get_execution_by_id(db: Session, execution_id: int) -> Execution | None:
+    """
+    Retrieves a specific execution record by its internal ID.
+
+    Args:
+        db (Session): The database session.
+        execution_id (int): The primary key of the execution.
+
+    Returns:
+        Execution | None: The execution object if found, otherwise None.
+    """
+    return db.scalar(select(Execution).where(Execution.execution_id == execution_id))
+
+
+def get_executions_by_job_id(
+    db: Session, job_id: int, skip: int = 0, limit: int = 100
+) -> list[Execution]:
+    """
+    Retrieves the execution history for a specific job with pagination.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The primary key of the job.
+        skip (int, optional): The number of records to skip. Defaults to 0.
+        limit (int, optional): The maximum number of records to return. Defaults to 100.
+
+    Returns:
+        list[Execution]: A list of execution objects associated with the job (ordered chronologically).
+    """
+    stm = (
+        select(Execution)
+        .where(Execution.job_id == job_id)
+        .order_by(Execution.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(db.scalars(stm).all())
+
+
+def update_execution_status(
+    db: Session,
+    execution_id: int,
+    status: ExecutionStatus,
+    worker_id: str | None = None,
+    error_message: str | None = None,
+) -> Execution | None:
+    """
+    Updates the lifecycle status of a specific execution.
+
+    Note:
+        This is a "smart" update function that handles business logic:
+        - If status is RUNNING: Records the start_time and assigns the worker_id.
+        - If status is SUCCESS / FAILED / TIMEOUT / CANCELLED: Records the end_time,
+          calculates the duration, and saves any error messages.
+
+    Args:
+        db (Session): The database session.
+        execution_id (int): The internal primary key of the execution.
+        status (ExecutionStatus): The new status of the execution.
+        worker_id (str | None, optional): The ID of the worker node processing the job.
+        error_message (str | None, optional): Detailed error message if the execution failed.
+
+    Returns:
+        Execution | None: The updated execution object, or None if not found.
+    """
+    # Step 1: 找出這筆執行紀錄
+    exec_record = db.scalar(
+        select(Execution).where(Execution.execution_id == execution_id)
+    )
+
+    if not exec_record:
+        return None
+
+    # 統一取得當下的 UTC 時間
+    now_utc = datetime.now(timezone.utc)
+
+    # 更新狀態
+    exec_record.status = status
+
+    # Step 2: 根據不同的狀態，做不同的商業邏輯處理
+    if status == ExecutionStatus.RUNNING:
+        # 任務剛開始：記錄開始時間與 Worker ID
+        exec_record.start_time = now_utc
+        if worker_id:
+            exec_record.worker_id = worker_id
+
+    elif status in [
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.TIMEOUT,
+        ExecutionStatus.CANCELLED,
+    ]:
+        # 任務結束：記錄結束時間與錯誤訊息
+        exec_record.end_time = now_utc
+        if error_message:
+            exec_record.error_message = error_message
+
+        # 自動計算執行時間 (Duration) 轉成秒數
+        if exec_record.start_time:
+            # 確保 start_time 帶有 UTC 時區資訊再相減，避免報錯
+            start_time_utc = (
+                exec_record.start_time.replace(tzinfo=timezone.utc)
+                if exec_record.start_time.tzinfo is None
+                else exec_record.start_time
+            )
+            duration_td = now_utc - start_time_utc
+            exec_record.duration = int(duration_td.total_seconds())
+
+    # Step 3: 存檔
+    db.commit()
+    db.refresh(exec_record)
+    return exec_record
 
 
 """
@@ -294,8 +547,7 @@ def get_all_jobs(db: Session, skip: int = 0, limit: int = 100) -> list[Job]:
 """
 
 
-
-'''
+"""
 軟體工程界有一句非常有名的玩笑話：「電腦科學中最難的兩件事，就是快取失效與**命名**。」
 
 你完全不需要覺得挫折！不知道怎麼取名，代表你已經脫離了「只要程式能跑就好」的新手村，開始在乎程式碼的「可讀性」與「維護性」了。
@@ -359,4 +611,4 @@ def get_all_jobs(db: Session, skip: int = 0, limit: int = 100) -> list[Job]:
 2. **不要把 `db` 寫進名字裡：** 因為你的函數參數已經有 `db: Session` 了，所以取名叫 `get_user_from_db` 是冗言贅字，直接叫 `get_user` 就好。
 
 掌握了這個萬用公式，你現在有沒有比較有靈感了？你要不要試著把你負責的第一個 CRUD 模組（例如針對 `User` 或 `Job`），挑兩三個功能，先列出你打算怎麼命名，我們一起來看看順不順眼？
-'''
+"""
