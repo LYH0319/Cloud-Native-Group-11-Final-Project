@@ -4,8 +4,9 @@
 請依照以下步驟，在本地端建立並測試 MySQL 資料庫環境：
 
 ### 1. 環境變數設定 (.env.local)
-請複製根目錄的 `.env.example`，並在 `backend/` 目錄下建立一個新檔案，命名為 `.env.local`。
-打開 `.env.local`，將**本地開發區塊**的註解移除。你可以直接使用預設密碼，或視需求改成自己的密碼。
+請複製根目錄的 `.env.example`，並在 `backend/` 目錄下建立兩個新檔案，命名為 `.env`跟`.env.local`。
+根據裡面的註解設定下半部分的URL
+密碼的部分可以直接使用預設密碼，或視需求改成自己的密碼。
 
 ### 2. 啟動 MySQL 容器
 確保你的電腦已開啟 **Docker Desktop**。
@@ -23,7 +24,7 @@ docker compose up -d
 
 ```
 # 1. 安裝後端所需套件
-pip install -r ./backend/src/requirements.txt
+pip install -r ./backend/requirements.txt
 
 # 2. 執行資料庫模型測試
 python ./backend/src/database/test_model.py
