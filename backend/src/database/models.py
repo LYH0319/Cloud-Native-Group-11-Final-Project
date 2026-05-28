@@ -21,6 +21,22 @@ class JobStatus(enum.Enum):
     DISABLED = "Disabled"
     DELETED = "Deleted"
 
+class ScheduleType(enum.Enum):
+    ONE_TIME = "One-time"
+    RECURRING = "Recurring"
+
+class TriggerType(enum.Enum):
+    SCHEDULER = "Scheduler"
+    MANUAL = "Manual"
+
+class ExecutionStatus(enum.Enum):
+    PENDING = "Pending"      # 排隊中
+    RUNNING = "Running"      # 執行中
+    SUCCESS = "Success"      # 成功
+    FAILED = "Failed"        # 失敗
+    TIMEOUT = "Timeout"      # 超時
+    CANCELLED = "Cancelled"  # 已取消
+
 class User(Base):
     __tablename__ = "users"
     
@@ -51,6 +67,9 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(Enum(JobStatus))
 
     has_dependency: Mapped[bool] = mapped_column(Boolean, default=False)
+    schedule_type: Mapped[ScheduleType] = mapped_column(Enum(ScheduleType))
+    cron_expression: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
@@ -71,6 +90,8 @@ class Job(Base):
         cascade="all, delete-orphan"
     )
     
+    executions: Mapped[List["Execution"]] = relationship(back_populates="job", cascade="all, delete-orphan")
+    
     
     def __repr__(self) -> str:
         return f"<Job(job_id={self.job_id}, owner_id={self.owner_id}, name='{self.job_name!r}', status='{self.status.name!r}')>"
@@ -79,15 +100,12 @@ class JobDependency(Base):
     __tablename__ = "job_dependencies"
     
     dependency_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    downstream_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id")) # job_id
     upstream_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id"))   # depend_on_job_id
+    downstream_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id")) # job_id
     
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
-    upstream_job: Mapped["Job"] = relationship(foreign_keys=[upstream_id])
-    downstream_job: Mapped["Job"] = relationship(foreign_keys=[downstream_id])
-    
     upstream_job: Mapped["Job"] = relationship(
         foreign_keys=[upstream_id], 
         back_populates="downstream_dependencies"
@@ -99,3 +117,50 @@ class JobDependency(Base):
     
     def __repr__(self) -> str:
         return f"<Dependency(upstream={self.upstream_id} -> downstream={self.downstream_id})>"
+    
+class Execution(Base):
+    __tablename__ = "executions"
+    
+    execution_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id"))
+    
+    trigger_type: Mapped[TriggerType] = mapped_column(Enum(TriggerType), default=TriggerType.SCHEDULER)
+    status: Mapped[ExecutionStatus] = mapped_column(Enum(ExecutionStatus), default=ExecutionStatus.PENDING)
+    
+    # 執行時間細節 (剛建立時還沒跑完，所以 end_time 和 duration 允許為 NULL)
+    start_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True) # 單位：秒
+    
+    # 分散式架構設計
+    worker_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # 哪台機器跑的
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # 失敗分析
+    error_message: Mapped[Optional[str]] = mapped_column(String(4000), nullable=True) # 錯誤訊息可能很長
+    
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    # --- 關聯設定 ---
+    job: Mapped["Job"] = relationship(back_populates="executions")
+    log_reference: Mapped[Optional["LogReference"]] = relationship(
+        back_populates="execution", 
+        cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Execution(id={self.execution_id}, job_id={self.job_id}, status='{self.status.name}', retry={self.retry_count})>"
+
+
+class LogReference(Base):
+    __tablename__ = "log_references"
+    
+    log_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    execution_id: Mapped[int] = mapped_column(ForeignKey("executions.execution_id"))
+    
+    log_path:Mapped[str] = mapped_column(String(1024))
+    log_size:Mapped[int] = mapped_column(Integer)
+    
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    
+    execution: Mapped["Execution"] = relationship(back_populates="log_reference")
