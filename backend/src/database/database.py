@@ -9,8 +9,6 @@ SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 if SQLALCHEMY_DATABASE_URL is None:
     raise ValueError("Database URL is not set. Please check your .env file.")
-else:
-    print(SQLALCHEMY_DATABASE_URL)
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True, echo=True)
 
