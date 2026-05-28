@@ -8,29 +8,42 @@ def run_test():
 
     # 2. 測試新增資料
     with SessionLocal.begin() as session:
-        # 建立一個測試用的 User (注意：不需要填 created_at 和 updated_at，資料庫會搞定)
-        new_user = User(
-            employee_id=104123,
-            username="test_dev_01",
-            role=UserRole.DEVELOPER
-        )
-        
-        session.add(new_user)
-        print("成功新增 User(離開 with 區塊時會自動 commit)")
+        # 先去資料庫找找看，是不是已經有這個員編了？
+        existing_user = session.scalars(
+            select(User).where(User.employee_id == 104111)
+        ).first()
 
-    # 3. 開新 Session 查詢剛剛新增的資料
+        if existing_user:
+            print("⚠️ 測試資料已經存在，跳過新增步驟。")
+        else:
+            # 如果沒有找到，才建立新的 User
+            new_user = User(
+                employee_id=104111,
+                username="test_dev_02",
+                role=UserRole.DEVELOPER
+            )
+            session.add(new_user)
+            print("✅ 成功新增 User！")
+
+    # 3. 開新 Session 查詢所有的資料
     with SessionLocal() as session:
-        # 查詢第一筆 User
-        user = session.scalars(select(User)).first()
+        # 將 .first() 改成 .all()，變數名稱習慣上會加上 s (users)
+        users = session.scalars(select(User)).all()
         
-        if user:
-            print("\n--- 🎉 成功從資料庫撈出 User 資訊 ---")
-            print(f"ID: {user.user_id}")
-            print(f"員編: {user.employee_id}")
-            print(f"名稱: {user.username}")
-            print(f"角色: {user.role.value}")  # Enum 取值要用 .value
-            print(f"建立時間: {user.created_at}")
-            print(f"更新時間: {user.updated_at}")
+        if users:
+            print(f"\n--- 🎉 成功從資料庫撈出 {len(users)} 筆 User 資訊 ---")
+            
+            # 使用 for 迴圈把每一個 user 印出來
+            for user in users:
+                print(f"ID: {user.user_id}")
+                print(f"員編: {user.employee_id}")
+                print(f"名稱: {user.username}")
+                print(f"角色: {user.role.value}")  
+                print(f"建立時間: {user.created_at}")
+                print(f"更新時間: {user.updated_at}")
+                print("-" * 30)  # 印出一條分隔線區隔每個人
+        else:
+            print("目前資料庫裡面沒有任何 User 資料喔！")
 
 if __name__ == "__main__":
     run_test()
