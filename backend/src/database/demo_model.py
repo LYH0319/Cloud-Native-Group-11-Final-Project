@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from database import engine, SessionLocal, Base, init_db
+from src.database.core import engine, SessionLocal, Base, init_db
 from models import User, UserRole, Job, JobStatus, HttpMethod, JobDependency, ScheduleType, Execution, ExecutionStatus, TriggerType, LogReference
 from datetime import datetime
 

@@ -47,3 +47,5 @@ jobs:
       working-directory: ./backend
       run: |
         pytest
+      env:
+          DATABASE_URL: "sqlite://"
