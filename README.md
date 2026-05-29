@@ -117,7 +117,7 @@ Cloud-Native-Group-11-Final-Project/
     |   ├── worker/              # 執行層：任務執行單元 (Data Plane)
     │   │   ├── __init__.py
     │   │   ├── schemas.py    # 任務執行相關的 Pydantic 模型定義
-    │   │   ├── executor.py      # 第二期：In-Process Thread 任務執行與超時控制
+    │   │   ├── executor.py      # 第二期：任務執行與長時間任務
     │   │   └── tasks/           # 實際執行的任務類型定義
     │   │       ├── __init__.py
     │   │       ├── http_task.py # 呼叫外部 REST API 任務
