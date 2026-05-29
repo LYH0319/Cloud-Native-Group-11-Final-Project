@@ -1,5 +1,5 @@
 from sqlalchemy import select
-from src.database.core import SessionLocal, init_db
+from src.database.connection import SessionLocal, init_db
 from models import (
     User,
     UserRole,

@@ -9,6 +9,7 @@ from src.database.models import (
     Execution,
     ExecutionStatus,
     TriggerType,
+    LogReference,
 )
 from datetime import datetime, timezone
 from src.database import schemas
@@ -508,6 +509,89 @@ def update_execution_status(
     return exec_record
 
 
+def report_execution_result(  # noqa: C901
+    db: Session,
+    execution_id: int,
+    report: schemas.ExecutionWorkerUpdate,
+) -> tuple[Execution, LogReference | None] | None:
+    """
+    Stores the structured result reported by a worker.
+
+    Large logs should remain in external storage; this function only stores
+    their path and size as a LogReference record.
+    """
+    exec_record = db.scalar(
+        select(Execution).where(Execution.execution_id == execution_id)
+    )
+
+    if not exec_record:
+        return None
+
+    if report.job_id is not None and report.job_id != exec_record.job_id:
+        return None
+
+    now_utc = datetime.now(timezone.utc)
+    exec_record.status = report.status
+    exec_record.worker_id = report.worker_id
+    exec_record.error_message = report.error_message
+
+    if report.retry_count is not None:
+        exec_record.retry_count = report.retry_count
+
+    if report.start_time is not None:
+        exec_record.start_time = report.start_time
+    elif report.status == ExecutionStatus.RUNNING and exec_record.start_time is None:
+        exec_record.start_time = now_utc
+
+    if report.end_time is not None:
+        exec_record.end_time = report.end_time
+    elif report.status in [
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.TIMEOUT,
+        ExecutionStatus.CANCELLED,
+    ]:
+        exec_record.end_time = now_utc
+
+    if report.duration is not None:
+        exec_record.duration = report.duration
+    elif exec_record.start_time and exec_record.end_time:
+        start_time_utc = (
+            exec_record.start_time.replace(tzinfo=timezone.utc)
+            if exec_record.start_time.tzinfo is None
+            else exec_record.start_time
+        )
+        end_time_utc = (
+            exec_record.end_time.replace(tzinfo=timezone.utc)
+            if exec_record.end_time.tzinfo is None
+            else exec_record.end_time
+        )
+        exec_record.duration = int((end_time_utc - start_time_utc).total_seconds())
+
+    log_reference = None
+    if report.log_path:
+        log_reference = db.scalar(
+            select(LogReference).where(LogReference.execution_id == execution_id)
+        )
+        if log_reference is None:
+            log_reference = LogReference(
+                execution_id=execution_id,
+                log_path=report.log_path,
+                log_size=report.log_size or 0,
+            )
+            db.add(log_reference)
+        else:
+            log_reference.log_path = report.log_path
+            log_reference.log_size = report.log_size or log_reference.log_size
+
+    db.commit()
+    db.refresh(exec_record)
+    if log_reference is not None:
+        db.refresh(log_reference)
+
+    return exec_record, log_reference
+
+
 """
 
 ### 1. 核心實體：`User` 與 `Job`
@@ -525,7 +609,8 @@ def update_execution_status(
 
 * **Create:** 絕對需要（Scheduler 觸發時寫入 Execution，Worker 跑完寫入 Log）。
 * **Read:** 絕對需要（讓使用者看任務跑得怎樣、看 Log 內容）。
-* **Update:** `Execution` 只需要更新 `status` 和 `end_time`（從 Pending 變成 Success/Failed）；`LogReference` **永遠不需要 Update**（Log 寫進去就不能改了！改了就失去稽核意義）。
+* **Update:** `Execution` 只需要更新 `status` 和 `end_time`（從 Pending 變成 Success/Failed）；
+`LogReference` **永遠不需要 Update**（Log 寫進去就不能改了！改了就失去稽核意義）。
 * **Delete:** **嚴格禁止單筆刪除！** 我們不能讓使用者或開發者去刪除「失敗的紀錄」來粉飾太平。這類資料通常是透過定期排程（例如：自動清掉 30 天前的紀錄）來批次處理，不需要寫開放給 API 的 Delete 函數。
 
 ### 3. 關聯設定：`JobDependency`
@@ -541,7 +626,9 @@ def update_execution_status(
 
 不要把 `crud.py` 當成資料庫操作手冊，把它當成「你的系統能幫使用者做什麼事」的服務列表。
 
-例如，與其寫一個生硬的 `update_execution()`，不如寫一個帶有商業邏輯的 `mark_execution_as_failed(execution_id, error_message)`。這樣你的程式碼不僅好讀，組員在接 API 的時候也會覺得超級直覺！
+例如，與其寫一個生硬的 `update_execution()`，不如寫一個帶有商業邏輯的
+`mark_execution_as_failed(execution_id, error_message)`。
+這樣你的程式碼不僅好讀，組員在接 API 的時候也會覺得超級直覺！
 
 既然不用痛苦地寫 20 個函數了，那我們現在就從最源頭的功能開始。你想先實作 **「註冊/查詢使用者 (`User`)」** 還是直接挑戰核心的 **「新增排程任務 (`Job`)」** 呢？
 """
@@ -607,7 +694,9 @@ def update_execution_status(
 
 ### 💡 命名的兩大避坑指南
 
-1. **保持動詞一致性 (Consistency)：** 決定用 `get_` 來查詢，就從頭到尾都用 `get_`。千萬不要這個檔案寫 `get_user`，下一個檔案突然變成 `find_job`，又一個檔案變成 `fetch_execution`。這會讓看你 Code 的組員發瘋。
+1. **保持動詞一致性 (Consistency)：** 決定用 `get_` 來查詢，就從頭到尾都用 `get_`。
+千萬不要這個檔案寫 `get_user`，下一個檔案突然變成 `find_job`，
+又一個檔案變成 `fetch_execution`。這會讓看你 Code 的組員發瘋。
 2. **不要把 `db` 寫進名字裡：** 因為你的函數參數已經有 `db: Session` 了，所以取名叫 `get_user_from_db` 是冗言贅字，直接叫 `get_user` 就好。
 
 掌握了這個萬用公式，你現在有沒有比較有靈感了？你要不要試著把你負責的第一個 CRUD 模組（例如針對 `User` 或 `Job`），挑兩三個功能，先列出你打算怎麼命名，我們一起來看看順不順眼？
