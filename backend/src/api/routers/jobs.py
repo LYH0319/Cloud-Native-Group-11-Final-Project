@@ -6,8 +6,10 @@ from pydantic import BaseModel
 
 from src.database.core import get_db
 
-from src.database.models import Job, JobDependency, Execution, HttpMethod, ScheduleType, JobStatus
-from src.database.crud import create_job, create_execution
+from src.database.models import Job, JobDependency, Execution, HttpMethod, ScheduleType, JobStatus, TriggerType
+import src.database.crud as crud
+import src.database.schemas as schemas
+#from src.database.crud import create_job, create_execution
 from src.utils.cycle_detection import has_cycle
 from src.worker.executor import dispatch_task
 
@@ -60,7 +62,7 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
             )
 
     # 3. 呼叫寫好的資料庫建立函式
-    new_job = create_job(db=db, owner_id=current_owner_id, job_in=payload)
+    new_job = crud.create_job(db=db, owner_id=current_owner_id, job_in=payload)
 
     # 4. 有相依性且通過檢測，將關聯寫入job_dependencies表
     if payload.depends_on:
@@ -74,17 +76,24 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
 
     return {"message": "Job 註冊成功", "job_id": new_job.job_id}
 
-@router.post("/{job_id}/trigger")
+@router.post(
+    "/{job_id}/trigger",
+    response_model=schemas.ExecutionResponse,  #response model 規範
+    status_code=status.HTTP_201_CREATED,
+)
 def manual_trigger(job_id: int, db: Session = Depends(get_db)):
     """手動觸發功能：繞過排程直接進入執行佇列"""
 
     # 1. 檢查job是否存在
-    job_record = db.scalar(select(Job).where(Job.job_id == job_id))
-    if not job_record:
-        raise HTTPException(status_code=404, detail="找不到該job")
+    job_record = crud.get_job_by_id(db=db, job_id=job_id)
+    if not job_record or job_record.status == JobStatus.DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Job not found"
+        )
     
     # 2. 呼叫 create_execution，觸發來源設為 MANUAL
-    exec_record = create_execution(db=db, job_id=job_id, trigger_type="MANUAL")
+    exec_record = crud.create_execution(db=db, job_id=job_id, trigger_type=TriggerType.MANUAL)
 
     # 3. 將資料包裝成字典，派發給worker thread
     job_dict = {
@@ -97,5 +106,5 @@ def manual_trigger(job_id: int, db: Session = Depends(get_db)):
     }
     dispatch_task(exec_record.execution_id, job_dict)
 
-    return {"message": "手動任務派發成功", "execution_id": exec_record.execution_id}
-
+    #return {"message": "手動任務派發成功", "execution_id": exec_record.execution_id}
+    return exec_record
