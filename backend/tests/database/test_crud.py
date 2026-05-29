@@ -554,3 +554,107 @@ def test_update_execution_lifecycle(db_session):
     assert success_exec.end_time is not None
     assert success_exec.duration is not None
     assert success_exec.duration >= 1  # Should be at least 1 second due to sleep
+
+
+def test_report_execution_result_with_log_reference(db_session):
+    """Test worker result reporting updates execution metadata and stores log reference."""
+    # Arrange
+    user = schemas.UserCreate(
+        employee_id="0021_dev", username="ReportUser", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_data = schemas.JobCreate(
+        job_name="Report Task",
+        method=HttpMethod.GET,
+        endpoint="http://test.com",
+        schedule_type=ScheduleType.ONE_TIME,
+    )
+    created_job = crud.create_job(
+        db=db_session, owner_id=created_user.user_id, job_in=job_data
+    )
+    exec_record = crud.create_execution(
+        db=db_session, job_id=created_job.job_id, trigger_type=TriggerType.MANUAL
+    )
+    report = schemas.ExecutionWorkerUpdate(
+        job_id=created_job.job_id,
+        status=ExecutionStatus.FAILED,
+        worker_id="node-beta",
+        retry_count=2,
+        error_message="HTTP 500 from downstream service",
+        log_path="logs/executions/report-task.log",
+        log_size=2048,
+    )
+
+    # Act
+    result = crud.report_execution_result(
+        db=db_session,
+        execution_id=exec_record.execution_id,
+        report=report,
+    )
+
+    # Assert
+    assert result is not None
+    updated_exec, log_reference = result
+    assert updated_exec.status == ExecutionStatus.FAILED
+    assert updated_exec.worker_id == "node-beta"
+    assert updated_exec.retry_count == 2
+    assert updated_exec.error_message == "HTTP 500 from downstream service"
+    assert updated_exec.end_time is not None
+    assert log_reference is not None
+    assert log_reference.execution_id == exec_record.execution_id
+    assert log_reference.log_path == "logs/executions/report-task.log"
+    assert log_reference.log_size == 2048
+
+
+def test_report_execution_result_rejects_mismatched_job_id(db_session):
+    """Test result reporting rejects payloads whose job_id does not match execution.job_id."""
+    # Arrange
+    user = schemas.UserCreate(
+        employee_id="0022_dev", username="MismatchUser", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    first_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="First Job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/first",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    second_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Second Job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/second",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    exec_record = crud.create_execution(
+        db=db_session, job_id=first_job.job_id, trigger_type=TriggerType.MANUAL
+    )
+    report = schemas.ExecutionWorkerUpdate(
+        job_id=second_job.job_id,
+        status=ExecutionStatus.SUCCESS,
+        worker_id="node-gamma",
+    )
+
+    # Act
+    result = crud.report_execution_result(
+        db=db_session,
+        execution_id=exec_record.execution_id,
+        report=report,
+    )
+
+    # Assert
+    unchanged_exec = crud.get_execution_by_id(
+        db=db_session, execution_id=exec_record.execution_id
+    )
+    assert result is None
+    assert unchanged_exec.status == ExecutionStatus.PENDING
+    assert unchanged_exec.worker_id is None

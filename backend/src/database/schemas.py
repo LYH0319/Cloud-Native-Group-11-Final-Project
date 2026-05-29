@@ -133,13 +133,19 @@ class ExecutionResponse(BaseModel):
 class ExecutionWorkerUpdate(BaseModel):
     """
     Schema used by remote workers to report execution results back to the main server.
-    Only allows updating status, timing, and error details.
+    Records structured result metadata while keeping large logs in external storage.
     """
 
+    job_id: Optional[int] = None
     status: ExecutionStatus
     worker_id: str = Field(..., max_length=50)
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: Optional[int] = Field(default=None, ge=0)
+    retry_count: Optional[int] = Field(default=None, ge=0)
     error_message: Optional[str] = Field(default=None, max_length=4000)
-    # The CRUD function will calculate end_time and duration automatically
+    log_path: Optional[str] = Field(default=None, max_length=1024)
+    log_size: Optional[int] = Field(default=None, ge=0)
 
 
 # ==========================================
@@ -180,3 +186,10 @@ class LogReferenceResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionResultReportResponse(BaseModel):
+    """Schema returned after a worker reports an execution result."""
+
+    execution: ExecutionResponse
+    log_reference: Optional[LogReferenceResponse] = None
