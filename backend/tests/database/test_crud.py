@@ -153,9 +153,7 @@ def test_create_job_success(db_session):
 
     # Act (Call crud.create_job)
     result = crud.create_job(
-        db=db_session,
-        owner_id=created_user.user_id,
-        job_in=job_data
+        db=db_session, owner_id=created_user.user_id, job_in=job_data
     )
 
     # Assert (Verify job attributes, owner_id, default status is ACTIVE, and db-generated fields)
@@ -803,3 +801,171 @@ def test_get_log_reference_by_execution_id_success(db_session):
     assert fetched_log is not None
     assert fetched_log.log_id == created_log.log_id
     assert fetched_log.log_path == "local/logs/test.log"
+
+
+# ==========================================
+# 16. Test: Pagination Counts
+# ==========================================
+
+
+def test_get_jobs_count_by_owner_id(db_session):
+    """Test retrieving the total count of jobs for a specific user."""
+    # Arrange: Create user and 3 jobs
+    user = schemas.UserCreate(
+        employee_id="0026_dev", username="Counter", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    for i in range(3):
+        job_data = schemas.JobCreate(
+            job_name=f"Count Job {i}",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        )
+        crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=job_data)
+
+    # Act: Get total count
+    total_count = crud.get_jobs_count_by_owner_id(
+        db=db_session, owner_id=created_user.user_id
+    )
+
+    # Assert
+    assert total_count == 3
+
+
+def test_get_executions_count_by_job_id(db_session):
+    """Test retrieving the total count of executions for a specific job."""
+    # Arrange: Create user, job, and 2 executions
+    user = schemas.UserCreate(
+        employee_id="0027_dev", username="ExecCounter", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Exec Count Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    crud.create_execution(
+        db=db_session, job_id=job.job_id, trigger_type=TriggerType.SCHEDULER
+    )
+    crud.create_execution(
+        db=db_session, job_id=job.job_id, trigger_type=TriggerType.MANUAL
+    )
+
+    # Act: Get total execution count
+    total_count = crud.get_executions_count_by_job_id(db=db_session, job_id=job.job_id)
+
+    # Assert
+    assert total_count == 2
+
+
+# ==========================================
+# 17. Test: Job Status Filter
+# ==========================================
+
+
+def test_get_jobs_by_owner_id_with_status_filter(db_session):
+    """Test that get_jobs_by_owner_id correctly filters by job status."""
+    # Arrange: Create user, 1 ACTIVE job, and 1 DISABLED job
+    user = schemas.UserCreate(
+        employee_id="0028_dev", username="FilterOwner", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_active = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Active Job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    job_disabled = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Disabled Job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    crud.change_job_status(
+        db=db_session, job_id=job_disabled.job_id, new_status=JobStatus.DISABLED
+    )
+
+    # Act: Query only ACTIVE jobs
+    active_results = crud.get_jobs_by_owner_id(
+        db=db_session, owner_id=created_user.user_id, status=JobStatus.ACTIVE
+    )
+
+    # Assert: Should only return 1 job
+    assert len(active_results) == 1
+    assert active_results[0].job_id == job_active.job_id
+    assert active_results[0].status == JobStatus.ACTIVE
+
+
+# ==========================================
+# 18. Test: Dependency Duplicate Prevention
+# ==========================================
+
+
+def test_create_job_dependency_prevents_duplicates(db_session):
+    """Test that creating the exact same dependency twice returns the existing one instead of crashing."""
+    # Arrange
+    from sqlalchemy import select
+    from src.database.models import JobDependency
+
+    user = schemas.UserCreate(
+        employee_id="0029_dev", username="DepDup", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_a = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="A",
+            method=HttpMethod.GET,
+            endpoint="http://test",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    job_b = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="B",
+            method=HttpMethod.GET,
+            endpoint="http://test",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    dep_data = schemas.JobDependencyCreate(
+        upstream_id=job_a.job_id, downstream_id=job_b.job_id
+    )
+
+    # Act 1: Create dependency for the first time
+    first_attempt = crud.create_job_dependency(db=db_session, dependency_in=dep_data)
+
+    # Act 2: Attempt to create the exact same dependency again
+    second_attempt = crud.create_job_dependency(db=db_session, dependency_in=dep_data)
+
+    # Assert: Both should return the same object ID, and DB should only have 1 record
+    assert first_attempt.dependency_id == second_attempt.dependency_id
+
+    total_deps = db_session.scalars(
+        select(JobDependency).where(JobDependency.upstream_id == job_a.job_id)
+    ).all()
+    assert len(total_deps) == 1

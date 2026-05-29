@@ -198,10 +198,14 @@ def get_job_by_id(db: Session, job_id: int) -> Job | None:
 
 
 def get_jobs_by_owner_id(
-    db: Session, owner_id: int, skip: int = 0, limit: int = 100
+    db: Session,
+    owner_id: int,
+    status: JobStatus | None = None,  # Added optional filter
+    skip: int = 0,
+    limit: int = 100,
 ) -> list[Job]:
     """
-    Retrieves a list of jobs owned by a specific user with pagination.
+    Retrieves a list of jobs owned by a specific user with pagination and optional status filtering.
 
     Note:
         This function returns all jobs belonging to the user, regardless of their status
@@ -216,10 +220,12 @@ def get_jobs_by_owner_id(
     Returns:
         list[Job]: A list of job objects owned by the specified user.
     """
+    conditions = [Job.owner_id == owner_id]
+    if status:
+        conditions.append(Job.status == status)
+
     return list(
-        db.scalars(
-            select(Job).where(Job.owner_id == owner_id).offset(skip).limit(limit)
-        ).all()
+        db.scalars(select(Job).where(*conditions).offset(skip).limit(limit)).all()
     )
 
 
@@ -281,6 +287,23 @@ def get_all_jobs(db: Session, skip: int = 0, limit: int = 100) -> list[Job]:
         list[Job]: A list of all job objects.
     """
     return list(db.scalars(select(Job).offset(skip).limit(limit)).all())
+
+
+def get_jobs_count_by_owner_id(db: Session, owner_id: int) -> int:
+    """
+    Counts the total number of jobs owned by a specific user.
+    Useful for frontend pagination components.
+
+    Args:
+        db (Session): The database session.
+        owner_id (int): The internal user ID.
+
+    Returns:
+        int: The total count of jobs.
+    """
+    return (
+        db.scalar(select(func.count(Job.job_id)).where(Job.owner_id == owner_id)) or 0
+    )
 
 
 def update_job(db: Session, job_id: int, job_in: schemas.JobUpdate) -> Job | None:
@@ -481,6 +504,25 @@ def get_executions_by_job_id(
     return list(db.scalars(stm).all())
 
 
+def get_executions_count_by_job_id(db: Session, job_id: int) -> int:
+    """
+    Counts the total number of execution records for a specific job.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal job ID.
+
+    Returns:
+        int: The total count of executions.
+    """
+    return (
+        db.scalar(
+            select(func.count(Execution.execution_id)).where(Execution.job_id == job_id)
+        )
+        or 0
+    )
+
+
 def update_execution_status(
     db: Session,
     execution_id: int,
@@ -556,6 +598,7 @@ def create_job_dependency(
 ) -> JobDependency:
     """
     Creates a new execution dependency between two jobs.
+    Prevents duplicate dependency links.
 
     Args:
         db (Session): The database session.
@@ -564,6 +607,16 @@ def create_job_dependency(
     Returns:
         JobDependency: The newly created dependency object.
     """
+    existing = db.scalar(
+        select(JobDependency).where(
+            JobDependency.upstream_id == dependency_in.upstream_id,
+            JobDependency.downstream_id == dependency_in.downstream_id,
+        )
+    )
+
+    if existing:
+        return existing
+
     new_dependency = JobDependency(
         upstream_id=dependency_in.upstream_id, downstream_id=dependency_in.downstream_id
     )
