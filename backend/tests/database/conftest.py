@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from src.database.core import Base
+from src.database.connection import Base
 from typing import Generator
 
 

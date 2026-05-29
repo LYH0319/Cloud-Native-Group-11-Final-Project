@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 安裝系統依賴（若 shell script 需要額外工具可在這裡擴充）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 複製並安裝 Python 套件
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 複製所有後端原始碼
+COPY . .
+
+# 設定環境變數，確保模組引入路徑正確
+ENV PYTHONPATH=/app
+
+# 啟動命令：直接執行 Worker 監聽進程
+CMD ["python", "src/worker/executor.py"]
