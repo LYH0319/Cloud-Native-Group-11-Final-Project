@@ -116,7 +116,8 @@ Cloud-Native-Group-11-Final-Project/
     │   │
     |   ├── worker/              # 執行層：任務執行單元 (Data Plane)
     │   │   ├── __init__.py
-    │   │   ├── executor.py      # 第一期：In-Process Thread 任務執行與超時控制
+    │   │   ├── schemas.py    # 任務執行相關的 Pydantic 模型定義
+    │   │   ├── executor.py      # 第二期：In-Process Thread 任務執行與超時控制
     │   │   └── tasks/           # 實際執行的任務類型定義
     │   │       ├── __init__.py
     │   │       ├── http_task.py # 呼叫外部 REST API 任務
@@ -135,6 +136,7 @@ Cloud-Native-Group-11-Final-Project/
     ├── tests/                   # 自動化測試單元 (Unit & Integration Tests)
     │   ├── __init__.py
     │   ├── test_api.py          # API 路由功能測試
+    │   ├── test_dispatch.py         # 目前是在還沒完成任務派發前的任務執行的模擬測試(因為沒有任務所以DB還沒法更新)
     │   └── test_scheduler.py    # 排程與相依性檢查邏輯測試
     │
     ├── .env                     # 本地環境變數設定檔（內含資料庫密碼等，不進入 Git 追蹤）
