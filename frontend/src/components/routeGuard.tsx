@@ -12,13 +12,14 @@ export const RouteGuard = ({ children, allowedRole } : RouteGuardProps) => {
   
   if (!userData) {
     alert('Please login first!');
-    return <><Navigate to="/login" replace /></>;
+    return <><Navigate to="/" replace /></>;
   }
 
   const user: User = JSON.parse(userData);
 
   if (allowedRole && user.role !== allowedRole) {
     alert(`Permission denied! This page is only accessible to ${allowedRole}.`);
+    localStorage.removeItem('user');
     return <><Navigate to="/" replace /></>;
   }
 

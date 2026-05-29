@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Home } from './pages/home';
 import { Login } from './pages/login';
-import { Developer } from './pages/developer';
+import { DeveloperHome } from './pages/developerHome';
+import { DeveloperAddRESTfulAPI } from './pages/developerAddRESTfulAPI';
+import { DeveloperAddShellScript } from './pages/developerAddShellScript';
 import { Operator } from './pages/operator';
 import { RouteGuard } from './components/routeGuard';
 
@@ -9,12 +11,21 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Login />} />
 
         <Route path="/developer" element={
           <RouteGuard allowedRole="developer">
-            <Developer />
+            <DeveloperHome />
+          </RouteGuard>
+        } />
+        <Route path="/developer/RESTfulAPI" element={
+          <RouteGuard allowedRole="developer">
+            <DeveloperAddRESTfulAPI />
+          </RouteGuard>
+        } />
+        <Route path="/developer/ShellScript" element={
+          <RouteGuard allowedRole="developer">
+            <DeveloperAddShellScript />
           </RouteGuard>
         } />
 
