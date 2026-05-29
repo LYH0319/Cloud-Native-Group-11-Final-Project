@@ -509,7 +509,7 @@ def update_execution_status(
     return exec_record
 
 
-def report_execution_result(
+def report_execution_result(  # noqa: C901
     db: Session,
     execution_id: int,
     report: schemas.ExecutionWorkerUpdate,
@@ -609,7 +609,8 @@ def report_execution_result(
 
 * **Create:** 絕對需要（Scheduler 觸發時寫入 Execution，Worker 跑完寫入 Log）。
 * **Read:** 絕對需要（讓使用者看任務跑得怎樣、看 Log 內容）。
-* **Update:** `Execution` 只需要更新 `status` 和 `end_time`（從 Pending 變成 Success/Failed）；`LogReference` **永遠不需要 Update**（Log 寫進去就不能改了！改了就失去稽核意義）。
+* **Update:** `Execution` 只需要更新 `status` 和 `end_time`（從 Pending 變成 Success/Failed）；
+`LogReference` **永遠不需要 Update**（Log 寫進去就不能改了！改了就失去稽核意義）。
 * **Delete:** **嚴格禁止單筆刪除！** 我們不能讓使用者或開發者去刪除「失敗的紀錄」來粉飾太平。這類資料通常是透過定期排程（例如：自動清掉 30 天前的紀錄）來批次處理，不需要寫開放給 API 的 Delete 函數。
 
 ### 3. 關聯設定：`JobDependency`
@@ -625,7 +626,9 @@ def report_execution_result(
 
 不要把 `crud.py` 當成資料庫操作手冊，把它當成「你的系統能幫使用者做什麼事」的服務列表。
 
-例如，與其寫一個生硬的 `update_execution()`，不如寫一個帶有商業邏輯的 `mark_execution_as_failed(execution_id, error_message)`。這樣你的程式碼不僅好讀，組員在接 API 的時候也會覺得超級直覺！
+例如，與其寫一個生硬的 `update_execution()`，不如寫一個帶有商業邏輯的
+`mark_execution_as_failed(execution_id, error_message)`。
+這樣你的程式碼不僅好讀，組員在接 API 的時候也會覺得超級直覺！
 
 既然不用痛苦地寫 20 個函數了，那我們現在就從最源頭的功能開始。你想先實作 **「註冊/查詢使用者 (`User`)」** 還是直接挑戰核心的 **「新增排程任務 (`Job`)」** 呢？
 """
@@ -691,7 +694,9 @@ def report_execution_result(
 
 ### 💡 命名的兩大避坑指南
 
-1. **保持動詞一致性 (Consistency)：** 決定用 `get_` 來查詢，就從頭到尾都用 `get_`。千萬不要這個檔案寫 `get_user`，下一個檔案突然變成 `find_job`，又一個檔案變成 `fetch_execution`。這會讓看你 Code 的組員發瘋。
+1. **保持動詞一致性 (Consistency)：** 決定用 `get_` 來查詢，就從頭到尾都用 `get_`。
+千萬不要這個檔案寫 `get_user`，下一個檔案突然變成 `find_job`，
+又一個檔案變成 `fetch_execution`。這會讓看你 Code 的組員發瘋。
 2. **不要把 `db` 寫進名字裡：** 因為你的函數參數已經有 `db: Session` 了，所以取名叫 `get_user_from_db` 是冗言贅字，直接叫 `get_user` 就好。
 
 掌握了這個萬用公式，你現在有沒有比較有靈感了？你要不要試著把你負責的第一個 CRUD 模組（例如針對 `User` 或 `Job`），挑兩三個功能，先列出你打算怎麼命名，我們一起來看看順不順眼？
