@@ -18,3 +18,9 @@ SQLAlchemy==2.0.50
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.38.0
+
+# 第二期: 任務執行
+pydantic-settings>=2.0.0
+redis>=5.0.0
+requests>=2.31.0
+httpx>=0.24.0
