@@ -178,7 +178,7 @@ class Job(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Job(job_id={self.job_id}, owner_id={self.owner_id}, name='{self.job_name!r}', status='{self.status.name!r}')>"
+        return f"<Job(job_id={self.job_id}, owner_id={self.owner_id}, name={self.job_name!r}, status={self.status.name!r})>"
 
 
 class JobDependency(Base):
@@ -270,7 +270,7 @@ class Execution(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Execution(id={self.execution_id}, job_id={self.job_id}, status='{self.status.name}', retry={self.retry_count})>"
+        return f"<Exec(id={self.execution_id}, job_id={self.job_id}, status={self.status.name!r}, retry={self.retry_count})>"
 
 
 class LogReference(Base):

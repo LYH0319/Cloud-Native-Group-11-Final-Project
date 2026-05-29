@@ -9,8 +9,10 @@ from src.database.models import (
     Execution,
     ExecutionStatus,
     TriggerType,
+    JobDependency,
+    LogReference,
 )
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from src.database import schemas
 
 # ==========================================
@@ -82,9 +84,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
         list[User]: A list of active user objects.
     """
     return list(
-        db.scalars(
-            select(User).where(User.is_active).offset(skip).limit(limit)
-        ).all()
+        db.scalars(select(User).where(User.is_active).offset(skip).limit(limit)).all()
     )
 
 
@@ -153,7 +153,9 @@ def create_job(
     Args:
         db (Session): The database session.
         owner_id (int): The internal user ID of the job's owner.
-        job_in (schemas.JobCreate): The validated job data containing job_name, method, endpoint, schedule_type, and optional fields like headers, body, and cron_expression.
+        job_in (schemas.JobCreate): The validated job data containing
+            job_name, method, endpoint, schedule_type,
+            and optional fields like headers, body, and cron_expression.
         next_run_time (datetime | None, optional): The calculated next execution timestamp. Defaults to None.
 
     Note:
@@ -235,10 +237,12 @@ def get_active_jobs(
     Args:
         db (Session): The database session.
         schedule_type (ScheduleType | None, optional): Filter by ONE_TIME or RECURRING. Defaults to None.
-        target_time (datetime | None, optional): The evaluation time. If None, uses the current database time. Defaults to None.
+        target_time (datetime | None, optional): The evaluation time. If None, uses the current database time.
+            Defaults to None.
         skip (int, optional): The number of records to skip. Defaults to 0.
         limit (int, optional): The maximum number of records to return. Defaults to 100.
-        for_update (bool, optional): If True, locks the selected rows for execution (skip_locked=True). Should ONLY be True when called by the background scheduler. Defaults to False.
+        for_update (bool, optional): If True, locks the selected rows for execution (skip_locked=True).
+            Should ONLY be True when called by the background scheduler. Defaults to False.
 
     Returns:
         list[Job]: A list of job objects ready for execution.
@@ -360,6 +364,56 @@ def delete_job(db: Session, job_id: int) -> bool:
     return True
 
 
+def hard_delete_job(db: Session, job_id: int) -> bool:
+    """
+    Permanently removes a job and its cascaded data from the database.
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The internal primary key of the job.
+
+    Returns:
+        bool: True if the job was successfully deleted, False if not found.
+    """
+    job = db.scalar(select(Job).where(Job.job_id == job_id))
+
+    if not job:
+        return False
+
+    db.delete(job)
+    db.commit()
+    return True
+
+
+def purge_old_deleted_jobs(db: Session, retention_days: int = 30) -> int:
+    """
+    Permanently removes jobs that have been marked as DELETED for longer than the retention period.
+
+    Args:
+        db (Session): The database session.
+        retention_days (int, optional): The number of days to retain soft-deleted jobs. Defaults to 30.
+
+    Returns:
+        int: The number of jobs permanently deleted.
+    """
+    threshold_time = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    # Find all jobs that are DELETED and were updated before the threshold time
+    jobs_to_delete = db.scalars(
+        select(Job).where(
+            Job.status == JobStatus.DELETED, Job.updated_at <= threshold_time
+        )
+    ).all()
+
+    deleted_count = len(jobs_to_delete)
+
+    for job in jobs_to_delete:
+        db.delete(job)
+
+    db.commit()
+    return deleted_count
+
+
 # ==========================================
 #               EXECUTION CRUD
 # ==========================================
@@ -376,7 +430,7 @@ def create_execution(db: Session, job_id: int, trigger_type: TriggerType) -> Exe
     Args:
         db (Session): The database session.
         job_id (int): The internal primary key of the job being executed.
-        trigger_type (TriggerType): Indicates if it was triggered by SCHEDULER or MANUAL.
+        trigger_type (TriggerType): It was triggered by SCHEDULER or MANUAL.
 
     Returns:
         Execution: The newly created execution object.
@@ -490,3 +544,138 @@ def update_execution_status(
     db.commit()
     db.refresh(exec_record)
     return exec_record
+
+
+# ==========================================
+#        JOB DEPENDENCY CRUD
+# ==========================================
+
+
+def create_job_dependency(
+    db: Session, dependency_in: schemas.JobDependencyCreate
+) -> JobDependency:
+    """
+    Creates a new execution dependency between two jobs.
+
+    Args:
+        db (Session): The database session.
+        dependency_in (schemas.JobDependencyCreate): The validated data containing upstream_id and downstream_id.
+
+    Returns:
+        JobDependency: The newly created dependency object.
+    """
+    new_dependency = JobDependency(
+        upstream_id=dependency_in.upstream_id, downstream_id=dependency_in.downstream_id
+    )
+    db.add(new_dependency)
+    db.commit()
+    db.refresh(new_dependency)
+    return new_dependency
+
+
+def get_upstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:
+    """
+    Retrieves all jobs that the specified job is waiting for.
+    (Finds records where downstream_id == job_id)
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The primary key of the downstream job.
+
+    Returns:
+        list[JobDependency]: A list of dependencies where the specified job is the downstream target.
+    """
+    return list(
+        db.scalars(
+            select(JobDependency).where(JobDependency.downstream_id == job_id)
+        ).all()
+    )
+
+
+def get_downstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:
+    """
+    Retrieves all jobs that are waiting for the specified job to finish.
+    (Finds records where upstream_id == job_id)
+
+    Args:
+        db (Session): The database session.
+        job_id (int): The primary key of the upstream job.
+
+    Returns:
+        list[JobDependency]: A list of dependencies where the specified job is the upstream source.
+    """
+    return list(
+        db.scalars(
+            select(JobDependency).where(JobDependency.upstream_id == job_id)
+        ).all()
+    )
+
+
+def delete_job_dependency(db: Session, dependency_id: int) -> bool:
+    """
+    Permanently removes a dependency link between two jobs.
+
+    Args:
+        db (Session): The database session.
+        dependency_id (int): The primary key of the dependency record.
+
+    Returns:
+        bool: True if deleted successfully, False if not found.
+    """
+    depend = db.scalar(
+        select(JobDependency).where(JobDependency.dependency_id == dependency_id)
+    )
+
+    if not depend:
+        return False
+
+    db.delete(depend)
+    db.commit()
+    return True
+
+
+# ==========================================
+#           LOG REFERENCE CRUD
+# ==========================================
+
+
+def create_log_reference(
+    db: Session, execution_id: int, log_path: str, log_size: int
+) -> LogReference:
+    """
+    Creates a new log reference pointing to external storage (e.g., S3 or local disk).
+
+    Args:
+        db (Session): The database session.
+        execution_id (int): The primary key of the associated execution.
+        log_path (str): The storage URI or file path of the log.
+        log_size (int): The size of the log file in bytes.
+
+    Returns:
+        LogReference: The newly created log reference object.
+    """
+    log_ref = LogReference(
+        execution_id=execution_id, log_path=log_path, log_size=log_size
+    )
+    db.add(log_ref)
+    db.commit()
+    db.refresh(log_ref)
+    return log_ref
+
+
+def get_log_reference_by_execution_id(
+    db: Session, execution_id: int
+) -> LogReference | None:
+    """
+    Retrieves the log reference associated with a specific execution.
+
+    Args:
+        db (Session): The database session.
+        execution_id (int): The primary key of the execution.
+
+    Returns:
+        LogReference | None: The log reference object if found, otherwise None.
+    """
+    return db.scalar(
+        select(LogReference).where(LogReference.execution_id == execution_id)
+    )

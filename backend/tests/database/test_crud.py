@@ -153,7 +153,9 @@ def test_create_job_success(db_session):
 
     # Act (Call crud.create_job)
     result = crud.create_job(
-        db=db_session, owner_id=created_user.user_id, job_in=job_data
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=job_data
     )
 
     # Assert (Verify job attributes, owner_id, default status is ACTIVE, and db-generated fields)
@@ -554,3 +556,250 @@ def test_update_execution_lifecycle(db_session):
     assert success_exec.end_time is not None
     assert success_exec.duration is not None
     assert success_exec.duration >= 1  # Should be at least 1 second due to sleep
+
+
+# ==========================================
+# 14. Test: Job Dependency CRUD
+# ==========================================
+
+
+def test_create_job_dependency_success(db_session):
+    """Test creating a dependency link between an upstream and a downstream job."""
+    # Arrange: Create user and two jobs
+    user = schemas.UserCreate(
+        employee_id="0021_dev", username="DepCreator", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_a_data = schemas.JobCreate(
+        job_name="Upstream Job A",
+        method=HttpMethod.GET,
+        endpoint="http://test.com/a",
+        schedule_type=ScheduleType.ONE_TIME,
+    )
+    job_b_data = schemas.JobCreate(
+        job_name="Downstream Job B",
+        method=HttpMethod.GET,
+        endpoint="http://test.com/b",
+        schedule_type=ScheduleType.ONE_TIME,
+    )
+    job_a = crud.create_job(
+        db=db_session, owner_id=created_user.user_id, job_in=job_a_data
+    )
+    job_b = crud.create_job(
+        db=db_session, owner_id=created_user.user_id, job_in=job_b_data
+    )
+
+    dep_data = schemas.JobDependencyCreate(
+        upstream_id=job_a.job_id, downstream_id=job_b.job_id
+    )
+
+    # Act: Create the dependency
+    result = crud.create_job_dependency(db=db_session, dependency_in=dep_data)
+
+    # Assert: Verify the returned dependency attributes
+    assert result.upstream_id == job_a.job_id
+    assert result.downstream_id == job_b.job_id
+    assert result.dependency_id is not None
+
+
+def test_get_job_dependencies_success(db_session):
+    """Test retrieving upstream and downstream dependencies for a specific job."""
+    # Arrange: Create user and three jobs (Job 1 and 2 must finish before Job 3 starts)
+    user = schemas.UserCreate(
+        employee_id="0022_dev", username="DepReader", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_1 = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Job 1",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    job_2 = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Job 2",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    job_3 = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Job 3",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    # Create dependencies: Job 1 -> Job 3 and Job 2 -> Job 3
+    crud.create_job_dependency(
+        db=db_session,
+        dependency_in=schemas.JobDependencyCreate(
+            upstream_id=job_1.job_id, downstream_id=job_3.job_id
+        ),
+    )
+    crud.create_job_dependency(
+        db=db_session,
+        dependency_in=schemas.JobDependencyCreate(
+            upstream_id=job_2.job_id, downstream_id=job_3.job_id
+        ),
+    )
+
+    # Act: Retrieve dependencies for verification
+    job_3_upstreams = crud.get_upstream_dependencies(db=db_session, job_id=job_3.job_id)
+    job_1_downstreams = crud.get_downstream_dependencies(
+        db=db_session, job_id=job_1.job_id
+    )
+
+    # Assert: Verify dependency counts and structural relationships
+    assert len(job_3_upstreams) == 2
+    upstream_ids = [dep.upstream_id for dep in job_3_upstreams]
+    assert job_1.job_id in upstream_ids
+    assert job_2.job_id in upstream_ids
+
+    assert len(job_1_downstreams) == 1
+    assert job_1_downstreams[0].downstream_id == job_3.job_id
+
+
+def test_delete_job_dependency_success(db_session):
+    """Test permanently deleting a job dependency."""
+    # Arrange: Setup user, jobs, and a single dependency link
+    user = crud.create_user(
+        db=db_session,
+        user_in=schemas.UserCreate(
+            employee_id="0023_dev", username="DepDeleter", role=UserRole.DEVELOPER
+        ),
+    )
+    job_a = crud.create_job(
+        db=db_session,
+        owner_id=user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="A",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    job_b = crud.create_job(
+        db=db_session,
+        owner_id=user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="B",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    dep = crud.create_job_dependency(
+        db=db_session,
+        dependency_in=schemas.JobDependencyCreate(
+            upstream_id=job_a.job_id, downstream_id=job_b.job_id
+        ),
+    )
+
+    # Act: Delete the dependency
+    result = crud.delete_job_dependency(db=db_session, dependency_id=dep.dependency_id)
+
+    # Assert: Verify deletion was successful and record no longer exists
+    assert result is True
+    upstreams = crud.get_upstream_dependencies(db=db_session, job_id=job_b.job_id)
+    assert len(upstreams) == 0
+
+
+# ==========================================
+# 15. Test: Log Reference CRUD
+# ==========================================
+
+
+def test_create_log_reference_success(db_session):
+    """Test creating a log reference pointing to external storage for a specific execution."""
+    # Arrange: Create User, Job, and Execution
+    user = crud.create_user(
+        db=db_session,
+        user_in=schemas.UserCreate(
+            employee_id="0024_dev", username="LogWriter", role=UserRole.DEVELOPER
+        ),
+    )
+    job = crud.create_job(
+        db=db_session,
+        owner_id=user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Log Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    execution = crud.create_execution(
+        db=db_session, job_id=job.job_id, trigger_type=TriggerType.SCHEDULER
+    )
+
+    log_path_str = "s3://my-bucket/logs/exec_001.log"
+    log_size_bytes = 2048
+
+    # Act: Insert log reference record
+    result = crud.create_log_reference(
+        db=db_session,
+        execution_id=execution.execution_id,
+        log_path=log_path_str,
+        log_size=log_size_bytes,
+    )
+
+    # Assert: Verify log reference fields
+    assert result.execution_id == execution.execution_id
+    assert result.log_path == log_path_str
+    assert result.log_size == log_size_bytes
+    assert result.log_id is not None
+
+
+def test_get_log_reference_by_execution_id_success(db_session):
+    """Test retrieving a log reference using its associated execution ID."""
+    # Arrange: Set up records and create a log reference
+    user = crud.create_user(
+        db=db_session,
+        user_in=schemas.UserCreate(
+            employee_id="0025_dev", username="LogReader", role=UserRole.DEVELOPER
+        ),
+    )
+    job = crud.create_job(
+        db=db_session,
+        owner_id=user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Log Task 2",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    execution = crud.create_execution(
+        db=db_session, job_id=job.job_id, trigger_type=TriggerType.SCHEDULER
+    )
+
+    created_log = crud.create_log_reference(
+        db=db_session,
+        execution_id=execution.execution_id,
+        log_path="local/logs/test.log",
+        log_size=1024,
+    )
+
+    # Act: Fetch log reference
+    fetched_log = crud.get_log_reference_by_execution_id(
+        db=db_session, execution_id=execution.execution_id
+    )
+
+    # Assert: Validate fetched data matches the created data
+    assert fetched_log is not None
+    assert fetched_log.log_id == created_log.log_id
+    assert fetched_log.log_path == "local/logs/test.log"
