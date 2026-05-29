@@ -46,6 +46,15 @@ jobs:
     - name: Test with pytest
       working-directory: ./backend
       run: |
-        pytest
+        mkdir -p reports
+        pytest --junitxml=reports/pytest-results.xml
       env:
           DATABASE_URL: "sqlite://"
+      
+    - name: Backend Test report
+      uses: dorny/test-reporter@v3
+      if: ${{ !cancelled() }}
+      with:
+        name: Pytest Results
+        path: backend/reports/pytest-results.xml
+        reporter: java-junit

@@ -6,13 +6,21 @@ from pydantic import BaseModel
 
 from src.database.core import get_db
 
-from src.database.models import Job, JobDependency, Execution, HttpMethod, ScheduleType, JobStatus, TriggerType
+from src.database.models import (
+    Job,
+    JobDependency,
+    Execution,
+    HttpMethod,
+    ScheduleType,
+    JobStatus,
+    TriggerType,
+)
 import src.database.crud as crud
 import src.database.schemas as schemas
-#from src.database.crud import create_job, create_execution
+
+# from src.database.crud import create_job, create_execution
 from src.utils.cycle_detection import has_cycle
 from src.worker.executor import dispatch_task
-
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -26,7 +34,7 @@ class JobCreateRequest(BaseModel):
     headers: Optional[dict] = None
     body: Optional[dict] = None
     cron_expression: Optional[str] = None
-    depends_on: Optional[List[int]] = None # 前置任務的 job_id 列表
+    depends_on: Optional[List[int]] = None  # 前置任務的 job_id 列表
 
 
 def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
@@ -58,7 +66,7 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
         if has_cycle(0, current_graph):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="無法註冊此 Job：偵測到環狀相依關係 (Cycle Detected)！"
+                detail="無法註冊此 Job：偵測到環狀相依關係 (Cycle Detected)！",
             )
 
     # 3. 呼叫寫好的資料庫建立函式
@@ -67,7 +75,9 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
     # 4. 有相依性且通過檢測，將關聯寫入job_dependencies表
     if payload.depends_on:
         for upstream_id in payload.depends_on:
-            dep_record = JobDependency(upstream_id=upstream_id, downstream_id=new_job.job_id)
+            dep_record = JobDependency(
+                upstream_id=upstream_id, downstream_id=new_job.job_id
+            )
             db.add(dep_record)
             # 因為更新了 has_dependency 標記，記得同步更新 Job 表的狀態
             new_job.has_dependency = True
@@ -76,9 +86,10 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
 
     return {"message": "Job 註冊成功", "job_id": new_job.job_id}
 
+
 @router.post(
     "/{job_id}/trigger",
-    response_model=schemas.ExecutionResponse,  #response model 規範
+    response_model=schemas.ExecutionResponse,  # response model 規範
     status_code=status.HTTP_201_CREATED,
 )
 def manual_trigger(job_id: int, db: Session = Depends(get_db)):
@@ -88,12 +99,13 @@ def manual_trigger(job_id: int, db: Session = Depends(get_db)):
     job_record = crud.get_job_by_id(db=db, job_id=job_id)
     if not job_record or job_record.status == JobStatus.DELETED:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Job not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
-    
+
     # 2. 呼叫 create_execution，觸發來源設為 MANUAL
-    exec_record = crud.create_execution(db=db, job_id=job_id, trigger_type=TriggerType.MANUAL)
+    exec_record = crud.create_execution(
+        db=db, job_id=job_id, trigger_type=TriggerType.MANUAL
+    )
 
     # 3. 將資料包裝成字典，派發給worker thread
     job_dict = {
@@ -102,9 +114,9 @@ def manual_trigger(job_id: int, db: Session = Depends(get_db)):
         "endpoint": job_record.endpoint,
         "headers": job_record.headers,
         "body": job_record.body,
-        "timeout": 300              # 第一期預設超時 5 分鐘
+        "timeout": 300,  # 第一期預設超時 5 分鐘
     }
     dispatch_task(exec_record.execution_id, job_dict)
 
-    #return {"message": "手動任務派發成功", "execution_id": exec_record.execution_id}
+    # return {"message": "手動任務派發成功", "execution_id": exec_record.execution_id}
     return exec_record
