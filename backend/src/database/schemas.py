@@ -199,9 +199,17 @@ class ExecutionWorkerUpdate(BaseModel):
         error_message (str | None, optional): Detailed error message. Defaults to None.
     """
 
+    job_id: Optional[int] = None
     status: ExecutionStatus
     worker_id: str = Field(..., max_length=50)
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: Optional[int] = Field(default=None, ge=0)
+    retry_count: Optional[int] = Field(default=None, ge=0)
     error_message: Optional[str] = Field(default=None, max_length=4000)
+
+    log_path: Optional[str] = Field(default=None, max_length=1024)
+    log_size: Optional[int] = Field(default=None)
 
 
 # ==========================================
@@ -263,3 +271,10 @@ class LogReferenceResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionResultReportResponse(BaseModel):
+    """Schema returned after a worker reports an execution result."""
+
+    execution: ExecutionResponse
+    log_reference: Optional[LogReferenceResponse] = None

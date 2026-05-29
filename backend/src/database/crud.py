@@ -588,6 +588,89 @@ def update_execution_status(
     return exec_record
 
 
+def report_execution_result(  # noqa: C901
+    db: Session,
+    execution_id: int,
+    report: schemas.ExecutionWorkerUpdate,
+) -> tuple[Execution, LogReference | None] | None:
+    """
+    Stores the structured result reported by a worker.
+
+    Large logs should remain in external storage; this function only stores
+    their path and size as a LogReference record.
+    """
+    exec_record = db.scalar(
+        select(Execution).where(Execution.execution_id == execution_id)
+    )
+
+    if not exec_record:
+        return None
+
+    if report.job_id is not None and report.job_id != exec_record.job_id:
+        return None
+
+    now_utc = datetime.now(timezone.utc)
+    exec_record.status = report.status
+    exec_record.worker_id = report.worker_id
+    exec_record.error_message = report.error_message
+
+    if report.retry_count is not None:
+        exec_record.retry_count = report.retry_count
+
+    if report.start_time is not None:
+        exec_record.start_time = report.start_time
+    elif report.status == ExecutionStatus.RUNNING and exec_record.start_time is None:
+        exec_record.start_time = now_utc
+
+    if report.end_time is not None:
+        exec_record.end_time = report.end_time
+    elif report.status in [
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.TIMEOUT,
+        ExecutionStatus.CANCELLED,
+    ]:
+        exec_record.end_time = now_utc
+
+    if report.duration is not None:
+        exec_record.duration = report.duration
+    elif exec_record.start_time and exec_record.end_time:
+        start_time_utc = (
+            exec_record.start_time.replace(tzinfo=timezone.utc)
+            if exec_record.start_time.tzinfo is None
+            else exec_record.start_time
+        )
+        end_time_utc = (
+            exec_record.end_time.replace(tzinfo=timezone.utc)
+            if exec_record.end_time.tzinfo is None
+            else exec_record.end_time
+        )
+        exec_record.duration = int((end_time_utc - start_time_utc).total_seconds())
+
+    log_reference = None
+    if report.log_path:
+        log_reference = db.scalar(
+            select(LogReference).where(LogReference.execution_id == execution_id)
+        )
+        if log_reference is None:
+            log_reference = LogReference(
+                execution_id=execution_id,
+                log_path=report.log_path,
+                log_size=report.log_size or 0,
+            )
+            db.add(log_reference)
+        else:
+            log_reference.log_path = report.log_path
+            log_reference.log_size = report.log_size or log_reference.log_size
+
+    db.commit()
+    db.refresh(exec_record)
+    if log_reference is not None:
+        db.refresh(log_reference)
+
+    return exec_record, log_reference
+
+
 # ==========================================
 #        JOB DEPENDENCY CRUD
 # ==========================================

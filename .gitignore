@@ -26,3 +26,8 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# ========================
+# 本機手動測試頁 (Local manual test pages)
+# ========================
+frontend/manual-execution-test.html

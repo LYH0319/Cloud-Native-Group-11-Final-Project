@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, Boolean, JSON, Enum, func, ForeignKey
 from typing import List, Optional, Dict, Any
-from src.database.core import Base
+from src.database.connection import Base
 import enum
 from datetime import datetime
 
@@ -178,7 +178,10 @@ class Job(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Job(job_id={self.job_id}, owner_id={self.owner_id}, name={self.job_name!r}, status={self.status.name!r})>"
+        return (
+            f"<Job(job_id={self.job_id}, owner_id={self.owner_id}, "
+            f"name='{self.job_name!r}', status='{self.status.name!r}')>"
+        )
 
 
 class JobDependency(Base):
@@ -270,7 +273,10 @@ class Execution(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Exec(id={self.execution_id}, job_id={self.job_id}, status={self.status.name!r}, retry={self.retry_count})>"
+        return (
+            f"<Execution(id={self.execution_id}, job_id={self.job_id}, "
+            f"status='{self.status.name}', retry={self.retry_count})>"
+        )
 
 
 class LogReference(Base):
