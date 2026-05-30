@@ -501,11 +501,208 @@ def test_get_executions_by_job_id(db_session):
     assert results[0].job_id == created_job.job_id
 
 
+def _create_history_test_job(db_session, employee_id="history_filter_dev"):
+    user = schemas.UserCreate(
+        employee_id=employee_id,
+        username="HistoryFilterUser",
+        role=UserRole.DEVELOPER,
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    job_data = schemas.JobCreate(
+        job_name="History Filter",
+        method=HttpMethod.GET,
+        endpoint="http://test.com/history",
+        schedule_type=ScheduleType.ONE_TIME,
+    )
+    return crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=job_data,
+    )
+
+
+def _create_execution_with_fields(
+    db_session,
+    job_id,
+    trigger_type=TriggerType.MANUAL,
+    status=ExecutionStatus.PENDING,
+    worker_id=None,
+    start_time=None,
+    created_at=None,
+):
+    execution = crud.create_execution(
+        db=db_session,
+        job_id=job_id,
+        trigger_type=trigger_type,
+    )
+    execution.status = status
+    execution.worker_id = worker_id
+    execution.start_time = start_time
+    if created_at is not None:
+        execution.created_at = created_at
+    db_session.commit()
+    db_session.refresh(execution)
+    return execution
+
+
+def test_get_execution_history_filters_by_job_id(db_session):
+    """Test history only returns records for the requested job."""
+    first_job = _create_history_test_job(db_session, "history_job_a")
+    second_job = _create_history_test_job(db_session, "history_job_b")
+    _create_execution_with_fields(db_session, first_job.job_id)
+    _create_execution_with_fields(db_session, second_job.job_id)
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=first_job.job_id,
+    )
+
+    assert len(results) == 1
+    assert results[0].job_id == first_job.job_id
+
+
+def test_get_execution_history_filters_by_status(db_session):
+    """Test filtering execution history by lifecycle status."""
+    job = _create_history_test_job(db_session, "history_status")
+    _create_execution_with_fields(
+        db_session, job.job_id, status=ExecutionStatus.SUCCESS
+    )
+    _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        status=ExecutionStatus.FAILED,
+    )
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=job.job_id,
+        status=ExecutionStatus.SUCCESS,
+    )
+
+    assert len(results) == 1
+    assert results[0].status == ExecutionStatus.SUCCESS
+
+
+def test_get_execution_history_filters_by_trigger_type(db_session):
+    """Test filtering execution history by scheduler or manual trigger."""
+    job = _create_history_test_job(db_session, "history_trigger")
+    _create_execution_with_fields(
+        db_session, job.job_id, trigger_type=TriggerType.MANUAL
+    )
+    _create_execution_with_fields(
+        db_session, job.job_id, trigger_type=TriggerType.SCHEDULER
+    )
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=job.job_id,
+        trigger_type=TriggerType.SCHEDULER,
+    )
+
+    assert len(results) == 1
+    assert results[0].trigger_type == TriggerType.SCHEDULER
+
+
+def test_get_execution_history_filters_by_worker_id(db_session):
+    """Test filtering execution history by worker ID."""
+    job = _create_history_test_job(db_session, "history_worker")
+    _create_execution_with_fields(db_session, job.job_id, worker_id="worker-a")
+    _create_execution_with_fields(db_session, job.job_id, worker_id="worker-b")
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=job.job_id,
+        worker_id="worker-b",
+    )
+
+    assert len(results) == 1
+    assert results[0].worker_id == "worker-b"
+
+
+def test_get_execution_history_filters_by_start_time_range(db_session):
+    """Test filtering execution history by start_time range."""
+    job = _create_history_test_job(db_session, "history_time")
+    base_time = datetime(2026, 1, 1)
+    _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        start_time=base_time - timedelta(hours=2),
+    )
+    expected = _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        start_time=base_time,
+    )
+    _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        start_time=base_time + timedelta(hours=2),
+    )
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=job.job_id,
+        start_time_from=base_time - timedelta(minutes=30),
+        start_time_to=base_time + timedelta(minutes=30),
+    )
+
+    assert len(results) == 1
+    assert results[0].execution_id == expected.execution_id
+
+
+def test_get_execution_history_pagination(db_session):
+    """Test skip and limit are applied to execution history."""
+    job = _create_history_test_job(db_session, "history_pagination")
+    base_time = datetime(2026, 1, 1)
+    for index in range(3):
+        _create_execution_with_fields(
+            db_session,
+            job.job_id,
+            created_at=base_time + timedelta(minutes=index),
+        )
+
+    results = crud.get_execution_history(
+        db=db_session,
+        job_id=job.job_id,
+        skip=1,
+        limit=1,
+    )
+
+    assert len(results) == 1
+    assert results[0].created_at == base_time + timedelta(minutes=1)
+
+
+def test_get_execution_history_default_sort_newest_first(db_session):
+    """Test default execution history ordering is newest record first."""
+    job = _create_history_test_job(db_session, "history_sort")
+    older_time = datetime(2026, 1, 1)
+    newer_time = older_time + timedelta(minutes=10)
+    older = _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        created_at=older_time,
+    )
+    newer = _create_execution_with_fields(
+        db_session,
+        job.job_id,
+        created_at=newer_time,
+    )
+
+    results = crud.get_execution_history(db=db_session, job_id=job.job_id)
+
+    assert [item.execution_id for item in results] == [
+        newer.execution_id,
+        older.execution_id,
+    ]
+
+
 def test_update_execution_lifecycle(db_session):
-    """Test the smart update logic for state transitions and duration calculation."""
+    """Test state transitions and duration calculation."""
     # Arrange
     user = schemas.UserCreate(
-        employee_id="0020_dev", username="LifecycleUser", role=UserRole.DEVELOPER
+        employee_id="0020_dev",
+        username="LifecycleUser",
+        role=UserRole.DEVELOPER,
     )
     created_user = crud.create_user(db=db_session, user_in=user)
 
@@ -521,7 +718,9 @@ def test_update_execution_lifecycle(db_session):
 
     # 1. Start with PENDING
     exec_record = crud.create_execution(
-        db=db_session, job_id=created_job.job_id, trigger_type=TriggerType.MANUAL
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
     )
 
     # Act 1: Transition to RUNNING
@@ -553,11 +752,11 @@ def test_update_execution_lifecycle(db_session):
     assert success_exec.status == ExecutionStatus.SUCCESS
     assert success_exec.end_time is not None
     assert success_exec.duration is not None
-    assert success_exec.duration >= 1  # Should be at least 1 second due to sleep
+    assert success_exec.duration >= 1
 
 
 def test_report_execution_result_with_log_reference(db_session):
-    """Test worker result reporting updates execution metadata and stores log reference."""
+    """Test worker result reporting stores execution and log metadata."""
     # Arrange
     user = schemas.UserCreate(
         employee_id="0021_dev", username="ReportUser", role=UserRole.DEVELOPER
@@ -574,7 +773,9 @@ def test_report_execution_result_with_log_reference(db_session):
         db=db_session, owner_id=created_user.user_id, job_in=job_data
     )
     exec_record = crud.create_execution(
-        db=db_session, job_id=created_job.job_id, trigger_type=TriggerType.MANUAL
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
     )
     report = schemas.ExecutionWorkerUpdate(
         job_id=created_job.job_id,
@@ -608,10 +809,12 @@ def test_report_execution_result_with_log_reference(db_session):
 
 
 def test_report_execution_result_rejects_mismatched_job_id(db_session):
-    """Test result reporting rejects payloads whose job_id does not match execution.job_id."""
+    """Test result reporting rejects mismatched job IDs."""
     # Arrange
     user = schemas.UserCreate(
-        employee_id="0022_dev", username="MismatchUser", role=UserRole.DEVELOPER
+        employee_id="0022_dev",
+        username="MismatchUser",
+        role=UserRole.DEVELOPER,
     )
     created_user = crud.create_user(db=db_session, user_in=user)
 
