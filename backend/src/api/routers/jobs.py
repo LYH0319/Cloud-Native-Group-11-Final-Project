@@ -51,15 +51,16 @@ def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
 def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
     # 1. 這裡先暫定一個 owner_id (之後整合權限認證時再改成 get_current_user.user_id)
     current_owner_id = 1  # 先hardcode!!!
+    depends_on = payload.depends_on or []
 
     # 2. 有相依性 則進行cycle detection
-    if payload.depends_on:
+    if depends_on:
         # 撈出目前全系統的依賴圖
         current_graph = fetch_dependency_graph_from_db(db)
 
         # 模擬將新 Job 的依賴加進圖中測試
         # 這裡用 0 代表尚未建立的全新 JobID 占位符
-        current_graph[0] = payload.depends_on
+        current_graph[0] = depends_on
 
         # 檢查新 Job 是否會導致環狀死鎖
         if has_cycle(0, current_graph):
@@ -72,14 +73,12 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
     new_job = crud.create_job(db=db, owner_id=current_owner_id, job_in=payload)
 
     # 4. 有相依性且通過檢測，將關聯寫入job_dependencies表
-    if payload.depends_on:
-        for upstream_id in payload.depends_on:
+    if depends_on:
+        for upstream_id in depends_on:
             dep_record = JobDependency(
                 upstream_id=upstream_id, downstream_id=new_job.job_id
             )
             db.add(dep_record)
-            # 因為更新了 has_dependency 標記，記得同步更新 Job 表的狀態
-            new_job.has_dependency = True
             db.commit()
             db.refresh(new_job)
 
