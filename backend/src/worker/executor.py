@@ -24,6 +24,44 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("WorkerExecutor")
 
 
+# ==================================================================
+#        Redis 派發邏輯(jobs.py / cron_scheduler.py需要)
+# ==================================================================
+# 全域只會建立一次Redis連線基礎
+redis_pool = redis.ConnectionPool(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    db=settings.REDIS_DB,
+    decode_responses=True
+)
+
+def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
+    """
+    【分布式派發窗口】
+    不再使用本機 Thread，而是將任務序列化為 JSON，直接推入分散式快取 Redis Queue
+    """
+    # 1. 重用Redis連線池
+    r_client = redis.Redis(connection_pool=redis_pool)
+
+    # 2. 封裝成 TaskPayload 格式，根據 json.loads(message_body) 需求
+    task_payload = {
+        "execution_id": execution_id,
+        "job_id": job_dict["job_id"],
+        "task_type": task_type,            # "http" 或 "shell"
+        "payload": job_dict,               # 實際要執行的 method, endpoint 等
+        "timeout_threshold": job_dict.get("timeout", 300)
+    }
+
+    # 3. 將字典轉成序列化JSON字典
+    message_body = json.dumps(task_payload)
+
+    # 4. RPUSH（Right Push）推入 Redis 佇列，喚醒遠端的 Worker 容器
+    queue_name = settings.JOB_QUEUE_NAME
+    r_client.rpush(queue_name, message_body)
+    print(f" [Redis Push] 成功將Execution ID {execution_id} 派發至queue [{queue_name}]")
+
+
+
 def get_redis_client():
     """建立 Redis 連線，作為第二期解耦的消息佇列與心跳快取基礎"""
     return redis.Redis(
