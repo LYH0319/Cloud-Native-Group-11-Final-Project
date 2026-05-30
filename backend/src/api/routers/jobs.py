@@ -85,7 +85,7 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
                 upstream_id=upstream_id, downstream_id=new_job.job_id
             )
             db.add(dep_record)
-           
+
         # 因為更新了 has_dependency 標記，記得同步更新 Job 表的狀態 (確保多筆依賴能批次安全寫入)
         new_job.has_dependency = True
         db.commit()

@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-
 LOG_ROOT = os.getenv("LOG_ROOT", "/app/logs")
 
 
@@ -48,5 +47,7 @@ def write_execution_log(execution_id: int | str, content: str) -> tuple[str, int
 
 def read_execution_log(log_path: str) -> str:
     validate_log_path(log_path)
-    with _resolve_log_path(log_path).open("r", encoding="utf-8", newline="") as log_file:
+    with _resolve_log_path(log_path).open(
+        "r", encoding="utf-8", newline=""
+    ) as log_file:
         return log_file.read()
