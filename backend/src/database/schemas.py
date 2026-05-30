@@ -173,6 +173,13 @@ class LogReferenceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ExecutionLogsResponse(BaseModel):
+    """Schema for returning execution log metadata."""
+
+    execution_id: int
+    logs: list[LogReferenceResponse]
+
+
 class ExecutionResponse(BaseModel):
     """
     Schema for returning execution history to the frontend.

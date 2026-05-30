@@ -14,6 +14,7 @@ from src.database.models import (
 )
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
+from src.utils.logger import validate_log_path, validate_log_size
 
 # ==========================================
 #                  USER CRUD
@@ -164,6 +165,7 @@ def create_job(
     Returns:
         Job: The newly created job object.
     """
+    depends_on = getattr(job_in, "depends_on", None) or []
 
     new_job = Job(
         owner_id=owner_id,
@@ -172,7 +174,7 @@ def create_job(
         endpoint=job_in.endpoint,
         headers=job_in.headers,
         body=job_in.body,
-        has_dependency=job_in.has_dependency,
+        has_dependency=bool(depends_on),
         schedule_type=job_in.schedule_type,
         cron_expression=job_in.cron_expression,
         next_run_time=next_run_time,
@@ -699,7 +701,9 @@ def report_execution_result(  # noqa: C901
         exec_record.duration = int((end_time_utc - start_time_utc).total_seconds())
 
     log_reference = None
-    if report.log_path:
+    if report.log_path is not None:
+        validate_log_path(report.log_path)
+        validate_log_size(report.log_size)
         log_reference = db.scalar(
             select(LogReference).where(LogReference.execution_id == execution_id)
         )
@@ -712,7 +716,8 @@ def report_execution_result(  # noqa: C901
             db.add(log_reference)
         else:
             log_reference.log_path = report.log_path
-            log_reference.log_size = report.log_size or log_reference.log_size
+            if report.log_size is not None:
+                log_reference.log_size = report.log_size
 
     db.commit()
     db.refresh(exec_record)

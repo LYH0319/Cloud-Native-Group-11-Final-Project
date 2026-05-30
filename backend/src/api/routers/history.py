@@ -1,13 +1,14 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
 from src.database.connection import get_db
 from src.database.models import ExecutionStatus, JobStatus, TriggerType
+from src.utils.logger import read_execution_log, validate_log_path, validate_log_size
 
 router = APIRouter(tags=["executions"])
 
@@ -86,6 +87,71 @@ def get_execution(
     return execution
 
 
+@router.get(
+    "/executions/{execution_id}/logs",
+    response_model=schemas.ExecutionLogsResponse,
+)
+def get_execution_logs(
+    execution_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return log metadata for one execution without reading file content."""
+    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
+    if execution is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found",
+        )
+
+    log_reference = crud.get_log_reference_by_execution_id(
+        db=db,
+        execution_id=execution_id,
+    )
+    return {
+        "execution_id": execution_id,
+        "logs": [log_reference] if log_reference is not None else [],
+    }
+
+
+@router.get("/executions/{execution_id}/logs/content")
+def get_execution_log_content(
+    execution_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return plain text log content for one execution."""
+    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
+    if execution is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found",
+        )
+
+    log_reference = crud.get_log_reference_by_execution_id(
+        db=db,
+        execution_id=execution_id,
+    )
+    if log_reference is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Log reference not found",
+        )
+
+    try:
+        content = read_execution_log(log_reference.log_path)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+    except FileNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Log file not found",
+        ) from error
+
+    return Response(content=content, media_type="text/plain")
+
+
 @router.patch(
     "/executions/{execution_id}/result",
     response_model=schemas.ExecutionResultReportResponse,
@@ -96,6 +162,16 @@ def report_execution_result(
     db: Session = Depends(get_db),
 ):
     """Store the structured result reported by a worker after execution."""
+    try:
+        validate_log_size(update_in.log_size)
+        if update_in.log_path is not None:
+            validate_log_path(update_in.log_path)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
     result = crud.report_execution_result(
         db=db,
         execution_id=execution_id,
