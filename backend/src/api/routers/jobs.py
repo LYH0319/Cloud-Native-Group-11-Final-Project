@@ -20,7 +20,6 @@ import src.database.schemas as schemas
 
 # from src.database.crud import create_job, create_execution
 from src.utils.cycle_detection import has_cycle
-from src.worker.executor import dispatch_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -89,34 +88,50 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
 
 @router.post(
     "/{job_id}/trigger",
-    response_model=schemas.ExecutionResponse,  # response model 規範
+    response_model=schemas.ManualTriggerResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def manual_trigger(job_id: int, db: Session = Depends(get_db)):
-    """手動觸發功能：繞過排程直接進入執行佇列"""
+def manually_trigger_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Create an execution record for a manual trigger.
 
-    # 1. 檢查job是否存在
-    job_record = crud.get_job_by_id(db=db, job_id=job_id)
-    if not job_record or job_record.status == JobStatus.DELETED:
+    The current project version records the manual execution request in the
+    metadata database and returns a dispatch payload preview. Queue dispatch
+    and real worker execution are future work.
+    """
+    job = crud.get_job_by_id(db=db, job_id=job_id)
+    if job is None or job.status == JobStatus.DELETED:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
         )
 
-    # 2. 呼叫 create_execution，觸發來源設為 MANUAL
-    exec_record = crud.create_execution(
-        db=db, job_id=job_id, trigger_type=TriggerType.MANUAL
+    execution = crud.create_execution(
+        db=db,
+        job_id=job_id,
+        trigger_type=TriggerType.MANUAL,
     )
-
-    # 3. 將資料包裝成字典，派發給worker thread
-    job_dict = {
-        "job_id": job_record.job_id,
-        "method": job_record.method.value,
-        "endpoint": job_record.endpoint,
-        "headers": job_record.headers,
-        "body": job_record.body,
-        "timeout": 300,  # 第一期預設超時 5 分鐘
+    task_payload = {
+        "execution_id": execution.execution_id,
+        "job_id": job.job_id,
+        "task_type": "http",
+        "payload": {
+            "method": job.method.value,
+            "endpoint": job.endpoint,
+            "headers": job.headers or {},
+            "body": job.body or {},
+        },
+        "timeout_threshold": 60,
     }
-    dispatch_task(exec_record.execution_id, job_dict)
 
-    # return {"message": "手動任務派發成功", "execution_id": exec_record.execution_id}
-    return exec_record
+    return {
+        "execution": execution,
+        "dispatch": {
+            "queued": False,
+            "queue_name": None,
+            "reason": "Queue dispatch is not implemented yet.",
+            "task_payload": task_payload,
+        },
+    }
