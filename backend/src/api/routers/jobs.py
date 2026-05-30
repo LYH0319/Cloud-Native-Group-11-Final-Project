@@ -39,7 +39,13 @@ class JobCreateRequest(BaseModel):
 def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
     """從資料庫讀取目前的相依性關係，並打包成鄰接串列"""
     graph = {}
-    dependencies = db.scalars(select(JobDependency)).all()
+    # 透過 join 篩選，只有兩端任務都還活著 (ACTIVE) 的關聯才需要進圖進行死鎖判定
+    stm = (
+        select(JobDependency)
+        .join(Job, JobDependency.downstream_id == Job.job_id)
+        .where(Job.status == JobStatus.ACTIVE)
+    )
+    dependencies = db.scalars(stm).all()
     for dep in dependencies:
         if dep.downstream_id not in graph:
             graph[dep.downstream_id] = []
@@ -79,8 +85,11 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
                 upstream_id=upstream_id, downstream_id=new_job.job_id
             )
             db.add(dep_record)
-            db.commit()
-            db.refresh(new_job)
+           
+        # 因為更新了 has_dependency 標記，記得同步更新 Job 表的狀態 (確保多筆依賴能批次安全寫入)
+        new_job.has_dependency = True
+        db.commit()
+        db.refresh(new_job)
 
     return {"message": "Job 註冊成功", "job_id": new_job.job_id}
 
