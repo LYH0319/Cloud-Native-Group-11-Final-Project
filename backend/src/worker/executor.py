@@ -36,8 +36,9 @@ redis_pool = redis.ConnectionPool(
     host=settings.REDIS_HOST,
     port=settings.REDIS_PORT,
     db=settings.REDIS_DB,
-    decode_responses=True
+    decode_responses=True,
 )
+
 
 def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     """
@@ -51,9 +52,9 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     task_payload = {
         "execution_id": execution_id,
         "job_id": job_dict["job_id"],
-        "task_type": task_type,            # "http" 或 "shell"
-        "payload": job_dict,               # 實際要執行的 method, endpoint 等
-        "timeout_threshold": job_dict.get("timeout", 300)
+        "task_type": task_type,  # "http" 或 "shell"
+        "payload": job_dict,  # 實際要執行的 method, endpoint 等
+        "timeout_threshold": job_dict.get("timeout", 300),
     }
 
     # 3. 將字典轉成序列化JSON字典
@@ -63,7 +64,6 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     queue_name = settings.JOB_QUEUE_NAME
     r_client.rpush(queue_name, message_body)
     print(f" [Redis Push] 成功將Execution ID {execution_id} 派發至queue [{queue_name}]")
-
 
 
 def get_redis_client():
