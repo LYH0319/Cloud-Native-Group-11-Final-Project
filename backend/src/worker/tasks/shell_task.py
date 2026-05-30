@@ -3,5 +3,5 @@ def run_shell_task(payload, timeout_threshold):
         "status": "Success",
         "duration": 1.0,
         "error_message": "",
-        "log": "MOCK SHELL SCRIPT SUCCESS"
+        "log": "MOCK SHELL SCRIPT SUCCESS",
     }

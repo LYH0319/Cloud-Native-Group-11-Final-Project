@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
+
 class Settings(BaseSettings):
     # Database Settings
     DATABASE_URL: str = Field(default="sqlite:///./test.db", env="DATABASE_URL")
@@ -9,14 +10,15 @@ class Settings(BaseSettings):
     REDIS_HOST: str = Field(default="localhost", env="REDIS_HOST")
     REDIS_PORT: int = Field(default=6379, env="REDIS_PORT")
     REDIS_DB: int = Field(default=0, env="REDIS_DB")
-    
+
     # 隊列與心跳設定
     JOB_QUEUE_NAME: str = "job_priority_queue"  # 第二期升級為 Priority 概念或基本 Queue
     HEARTBEAT_INTERVAL: int = 30  # Worker 每 30 秒回報一次心跳
-    HEARTBEAT_TIMEOUT: int = 60   # 超過 60 秒未更新視為超時崩潰
+    HEARTBEAT_TIMEOUT: int = 60  # 超過 60 秒未更新視為超時崩潰
 
     class Config:
         env_file = ".env"
         extra = "ignore"
+
 
 settings = Settings()
