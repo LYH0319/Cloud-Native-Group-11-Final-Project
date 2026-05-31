@@ -17,6 +17,7 @@ from src.database.models import (
     UserRole,
 )
 from src.utils import logger as log_storage
+from src.utils.security import create_access_token
 
 
 @pytest.fixture()
@@ -66,6 +67,16 @@ def _create_job(api_db_session, employee_id="api_history_dev"):
     )
 
 
+def _auth_headers_for_user(user):
+    token = create_access_token(subject=str(user.user_id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _auth_headers_for_job(api_db_session, job):
+    user = crud.get_user_by_user_id(db=api_db_session, user_id=job.owner_id)
+    return _auth_headers_for_user(user)
+
+
 def _create_execution(
     api_db_session,
     job_id,
@@ -97,11 +108,98 @@ def _create_default_job_owner(api_db_session):
     )
 
 
+def test_auth_register_succeeds(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "auth_user_1",
+            "username": "AuthUserOne",
+            "email": "auth1@example.com",
+            "password": "secret123",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["employee_id"] == "auth_user_1"
+    assert body["email"] == "auth1@example.com"
+    assert "hashed_password" not in body
+
+
+def test_auth_register_rejects_duplicate_email_or_username(client):
+    payload = {
+        "employee_id": "auth_user_2",
+        "username": "AuthUserTwo",
+        "email": "auth2@example.com",
+        "password": "secret123",
+    }
+    assert client.post("/api/auth/register", json=payload).status_code == 201
+
+    duplicate_email = {
+        **payload,
+        "employee_id": "auth_user_3",
+        "username": "AuthUserThree",
+    }
+    duplicate_username = {
+        **payload,
+        "employee_id": "auth_user_4",
+        "email": "auth4@example.com",
+    }
+
+    assert client.post("/api/auth/register", json=duplicate_email).status_code == 409
+    assert client.post("/api/auth/register", json=duplicate_username).status_code == 409
+
+
+def test_auth_login_returns_access_token(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "auth_user_5",
+            "username": "AuthUserFive",
+            "email": "auth5@example.com",
+            "password": "secret123",
+        },
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "auth5@example.com", "password": "secret123"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+    assert body["user"]["username"] == "AuthUserFive"
+
+
+def test_auth_login_invalid_password_fails(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "auth_user_6",
+            "username": "AuthUserSix",
+            "email": "auth6@example.com",
+            "password": "secret123",
+        },
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        json={"identifier": "auth6@example.com", "password": "wrong"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_get_job_executions_success(client, api_db_session):
     job = _create_job(api_db_session)
     _create_execution(api_db_session, job.job_id)
 
-    response = client.get(f"/api/jobs/{job.job_id}/executions")
+    response = client.get(
+        f"/api/jobs/{job.job_id}/executions",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -115,7 +213,10 @@ def test_manual_trigger_returns_execution_and_dispatch_preview(
 ):
     job = _create_job(api_db_session)
 
-    response = client.post(f"/api/jobs/{job.job_id}/trigger")
+    response = client.post(
+        f"/api/jobs/{job.job_id}/trigger",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 201
     body = response.json()
@@ -136,8 +237,12 @@ def test_manual_trigger_returns_execution_and_dispatch_preview(
     )
 
 
-def test_get_job_executions_job_not_found(client):
-    response = client.get("/api/jobs/9999/executions")
+def test_get_job_executions_job_not_found(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+    response = client.get(
+        "/api/jobs/9999/executions",
+        headers=_auth_headers_for_user(user),
+    )
 
     assert response.status_code == 404
 
@@ -146,14 +251,21 @@ def test_get_execution_success(client, api_db_session):
     job = _create_job(api_db_session)
     execution = _create_execution(api_db_session, job.job_id)
 
-    response = client.get(f"/api/executions/{execution.execution_id}")
+    response = client.get(
+        f"/api/executions/{execution.execution_id}",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 200
     assert response.json()["execution_id"] == execution.execution_id
 
 
-def test_get_execution_not_found(client):
-    response = client.get("/api/executions/9999")
+def test_get_execution_not_found(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+    response = client.get(
+        "/api/executions/9999",
+        headers=_auth_headers_for_user(user),
+    )
 
     assert response.status_code == 404
 
@@ -174,6 +286,7 @@ def test_get_job_executions_status_filter(client, api_db_session):
     response = client.get(
         f"/api/jobs/{job.job_id}/executions",
         params={"status": "Success"},
+        headers=_auth_headers_for_job(api_db_session, job),
     )
 
     assert response.status_code == 200
@@ -198,6 +311,7 @@ def test_get_job_executions_trigger_type_filter(client, api_db_session):
     response = client.get(
         f"/api/jobs/{job.job_id}/executions",
         params={"trigger_type": "Manual"},
+        headers=_auth_headers_for_job(api_db_session, job),
     )
 
     assert response.status_code == 200
@@ -223,6 +337,7 @@ def test_get_job_executions_pagination(client, api_db_session):
     response = client.get(
         f"/api/jobs/{job.job_id}/executions",
         params={"skip": 1, "limit": 1},
+        headers=_auth_headers_for_job(api_db_session, job),
     )
 
     assert response.status_code == 200
@@ -238,7 +353,7 @@ def test_register_job_without_depends_on_sets_has_dependency_false(
     client,
     api_db_session,
 ):
-    _create_default_job_owner(api_db_session)
+    user = _create_default_job_owner(api_db_session)
 
     response = client.post(
         "/api/jobs/",
@@ -248,6 +363,7 @@ def test_register_job_without_depends_on_sets_has_dependency_false(
             "endpoint": "http://test.com/no-dependency",
             "schedule_type": "One-time",
         },
+        headers=_auth_headers_for_user(user),
     )
 
     assert response.status_code == 201
@@ -257,6 +373,21 @@ def test_register_job_without_depends_on_sets_has_dependency_false(
     )
     assert job is not None
     assert job.has_dependency is False
+    assert job.owner_id == user.user_id
+
+
+def test_unauthenticated_job_creation_is_rejected(client):
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "No Auth",
+            "method": "GET",
+            "endpoint": "http://test.com/no-auth",
+            "schedule_type": "One-time",
+        },
+    )
+
+    assert response.status_code == 401
 
 
 def test_register_job_with_depends_on_sets_has_dependency_true(
@@ -284,6 +415,7 @@ def test_register_job_with_depends_on_sets_has_dependency_true(
             "schedule_type": "One-time",
             "depends_on": [upstream.job_id],
         },
+        headers=_auth_headers_for_user(owner),
     )
 
     assert response.status_code == 201
@@ -300,6 +432,82 @@ def test_register_job_with_depends_on_sets_has_dependency_true(
     )
     assert len(upstream_dependencies) == 1
     assert upstream_dependencies[0].upstream_id == upstream.job_id
+
+
+def test_job_listing_only_returns_authenticated_users_jobs(client, api_db_session):
+    first_user = _create_default_job_owner(api_db_session)
+    second_user = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_other_owner",
+            username="ApiOtherOwner",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+    first_job = crud.create_job(
+        db=api_db_session,
+        owner_id=first_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Mine",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/mine",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    crud.create_job(
+        db=api_db_session,
+        owner_id=second_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Other",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/other",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    response = client.get("/api/jobs/", headers=_auth_headers_for_user(first_user))
+
+    assert response.status_code == 200
+    assert [item["job_id"] for item in response.json()] == [first_job.job_id]
+
+
+def test_manual_trigger_rejects_non_owner(client, api_db_session):
+    job = _create_job(api_db_session, "api_owner_job")
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_other_user",
+            username="ApiOtherUser",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.post(
+        f"/api/jobs/{job.job_id}/trigger",
+        headers=_auth_headers_for_user(other),
+    )
+
+    assert response.status_code == 404
+
+
+def test_execution_history_rejects_non_owner(client, api_db_session):
+    job = _create_job(api_db_session, "api_history_owner")
+    _create_execution(api_db_session, job.job_id)
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_history_other",
+            username="ApiHistoryOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.get(
+        f"/api/jobs/{job.job_id}/executions",
+        headers=_auth_headers_for_user(other),
+    )
+
+    assert response.status_code == 404
 
 
 def _worker_result_payload(**overrides):
@@ -360,8 +568,12 @@ def test_report_execution_result_with_log_metadata_creates_reference(
     assert body["log_reference"]["log_size"] == 128
 
 
-def test_get_execution_logs_execution_not_found(client):
-    response = client.get("/api/executions/9999/logs")
+def test_get_execution_logs_execution_not_found(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+    response = client.get(
+        "/api/executions/9999/logs",
+        headers=_auth_headers_for_user(user),
+    )
 
     assert response.status_code == 404
 
@@ -373,7 +585,10 @@ def test_get_execution_logs_without_log_reference_returns_empty_logs(
     job = _create_job(api_db_session, "api_log_empty_list")
     execution = _create_execution(api_db_session, job.job_id)
 
-    response = client.get(f"/api/executions/{execution.execution_id}/logs")
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -395,7 +610,10 @@ def test_get_execution_logs_with_log_reference_returns_metadata(
         log_size=256,
     )
 
-    response = client.get(f"/api/executions/{execution.execution_id}/logs")
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -427,7 +645,10 @@ def test_get_execution_log_content_returns_plain_text(
         log_size=log_size,
     )
 
-    response = client.get(f"/api/executions/{execution.execution_id}/logs/content")
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs/content",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")
@@ -450,6 +671,9 @@ def test_get_execution_log_content_missing_file_returns_404(
         log_size=10,
     )
 
-    response = client.get(f"/api/executions/{execution.execution_id}/logs/content")
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs/content",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
 
     assert response.status_code == 404

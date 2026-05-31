@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
-from src.api.routers import history, jobs
+from src.api.routers import auth, history, jobs
 from src.database.connection import Base, engine
 
 app = FastAPI(
@@ -42,5 +42,6 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
