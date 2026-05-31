@@ -83,20 +83,14 @@ def manually_trigger_job(
         job_id=job_id,
         trigger_type=TriggerType.MANUAL,
     )
-    task_payload = {
-        "execution_id": execution.execution_id,
-        "job_id": job.job_id,
-        "task_type": "http",
-        "payload": {
-            "method": job.method.value,
-            "endpoint": job.endpoint,
-            "headers": job.headers or {},
-            "body": job.body or {},
-        },
-        "timeout_threshold": 60,
+    task_payload_dict = {
+        "method": job.method.value,
+        "endpoint": job.endpoint,
+        "headers": job.headers or {},
+        "body": job.body or {}
     }
 
-    dispatch_task(execution_id=execution.execution_id, job_dict=task_payload)
+    dispatch_task(execution_id=execution.execution_id, job_dict=task_payload_dict)
 
     return {
         "execution": execution,
@@ -108,7 +102,7 @@ def manually_trigger_job(
                 "execution_id": execution.execution_id,
                 "job_id": job.job_id,
                 "task_type": "http",
-                "payload": task_payload,
+                "payload": task_payload_dict,
                 "timeout_threshold": 60
             }
         },
