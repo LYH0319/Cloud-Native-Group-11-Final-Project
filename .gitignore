@@ -31,3 +31,14 @@ htmlcov/
 # 本機手動測試頁 (Local manual test pages)
 # ========================
 frontend/manual-execution-test.html
+
+# ========================
+# Local execution logs
+# ========================
+logs/*
+!logs/.gitkeep
+
+# ========================
+# Local frontend test backup
+# ========================
+frontend/manual-test-backup/

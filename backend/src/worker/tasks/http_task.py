@@ -1,5 +1,6 @@
 import time
 
+
 def run_http_task(payload, timeout_threshold):
     logger_msg = "開始模擬長時間任務..."
     print("[Task] 收到任務，正在模擬耗時長任務，阻斷10s")
@@ -9,5 +10,5 @@ def run_http_task(payload, timeout_threshold):
         "status": "Success",
         "duration": 10.0,
         "error_message": "",
-        "log": "MOCK LONG HTTP TASK SUCCESS"
+        "log": "MOCK LONG HTTP TASK SUCCESS",
     }
