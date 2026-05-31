@@ -18,10 +18,16 @@ class UserBase(BaseModel):
     """
 
     employee_id: str = Field(
-        ..., min_length=4, max_length=20, description="Unique employee identifier"
+        ...,
+        min_length=4,
+        max_length=20,
+        description="Unique employee identifier",
     )
     username: str = Field(
-        ..., min_length=1, max_length=30, description="Display name of the user"
+        ...,
+        min_length=1,
+        max_length=30,
+        description="Display name of the user",
     )
     role: UserRole = Field(description="Authorization role")
 
@@ -179,6 +185,25 @@ class JobUpdate(BaseModel):
 # ==========================================
 
 
+class LogReferenceResponse(BaseModel):
+    """Schema for returning log metadata to the frontend."""
+
+    log_id: int
+    execution_id: int
+    log_path: str
+    log_size: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionLogsResponse(BaseModel):
+    """Schema for returning execution log metadata."""
+
+    execution_id: int
+    logs: list[LogReferenceResponse]
+
+
 class ExecutionResponse(BaseModel):
     """
     Schema for returning execution history to the frontend.
@@ -208,14 +233,51 @@ class ExecutionResponse(BaseModel):
     retry_count: int
     error_message: Optional[str]
     created_at: datetime
+    log_reference: Optional[LogReferenceResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
+class ExecutionHistoryResponse(BaseModel):
+    """Paginated execution history response."""
+
+    items: list[ExecutionResponse]
+    skip: int
+    limit: int
+    count: int
+
+
+class TaskDispatchPayload(BaseModel):
+    """Queue payload shape expected by the worker execution layer."""
+
+    execution_id: int
+    job_id: int
+    task_type: str
+    payload: Dict[str, Any]
+    timeout_threshold: int = 60
+
+
+class ManualTriggerDispatchInfo(BaseModel):
+    """Dispatch metadata returned by manual trigger API."""
+
+    queued: bool
+    queue_name: Optional[str] = None
+    reason: str
+    task_payload: TaskDispatchPayload
+
+
+class ManualTriggerResponse(BaseModel):
+    """Response returned after a manual trigger request is recorded."""
+
+    execution: ExecutionResponse
+    dispatch: ManualTriggerDispatchInfo
+
+
 class ExecutionWorkerUpdate(BaseModel):
     """
-    Schema used by remote workers to report execution results back to the main server.
-    Only allows updating status, timing, and error details.
+    Schema used by remote workers to report execution results back to the
+    main server. Records structured result metadata while keeping large logs
+    in external storage.
 
     Attributes:
         status (ExecutionStatus): The new execution status (Required).
@@ -274,27 +336,6 @@ class JobDependencyResponse(JobDependencyCreate):
 # ==========================================
 # 5. Log Reference Schemas
 # ==========================================
-
-
-class LogReferenceResponse(BaseModel):
-    """
-    Schema for returning log metadata to the frontend.
-
-    Attributes:
-        log_id (int): Internal primary key.
-        execution_id (int): ID of the associated execution.
-        log_path (str): File path or URI of the log.
-        log_size (int): Size of the log in bytes.
-        created_at (datetime): Creation timestamp.
-    """
-
-    log_id: int
-    execution_id: int
-    log_path: str
-    log_size: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class ExecutionResultReportResponse(BaseModel):

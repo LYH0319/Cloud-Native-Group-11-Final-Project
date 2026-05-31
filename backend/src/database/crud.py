@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import asc, desc, select, func
 from src.database.models import (
     User,
     UserRole,
@@ -14,6 +14,7 @@ from src.database.models import (
 )
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
+from src.utils.logger import validate_log_path, validate_log_size
 
 # ==========================================
 #                  USER CRUD
@@ -164,6 +165,7 @@ def create_job(
     Returns:
         Job: The newly created job object.
     """
+    depends_on = getattr(job_in, "depends_on", None) or []
 
     new_job = Job(
         owner_id=owner_id,
@@ -172,7 +174,7 @@ def create_job(
         endpoint=job_in.endpoint,
         headers=job_in.headers,
         body=job_in.body,
-        has_dependency=job_in.has_dependency,
+        has_dependency=bool(depends_on),
         schedule_type=job_in.schedule_type,
         cron_expression=job_in.cron_expression,
         next_run_time=next_run_time,
@@ -504,6 +506,57 @@ def get_executions_by_job_id(
     return list(db.scalars(stm).all())
 
 
+def get_execution_history(
+    db: Session,
+    job_id: int,
+    status: ExecutionStatus | None = None,
+    trigger_type: TriggerType | None = None,
+    worker_id: str | None = None,
+    start_time_from: datetime | None = None,
+    start_time_to: datetime | None = None,
+    skip: int = 0,
+    limit: int = 100,
+    order_by: str = "created_at",
+    order_direction: str = "desc",
+) -> list[Execution]:
+    """
+    Retrieves execution history for a job with filters, pagination, and sorting.
+
+    The query is scoped to one job and defaults to newest executions first.
+    """
+    order_columns = {
+        "created_at": Execution.created_at,
+        "start_time": Execution.start_time,
+        "end_time": Execution.end_time,
+        "duration": Execution.duration,
+        "execution_id": Execution.execution_id,
+    }
+    order_column = order_columns.get(order_by, Execution.created_at)
+    direction = desc if order_direction == "desc" else asc
+    limited = min(limit, 100)
+
+    conditions = [Execution.job_id == job_id]
+    if status is not None:
+        conditions.append(Execution.status == status)
+    if trigger_type is not None:
+        conditions.append(Execution.trigger_type == trigger_type)
+    if worker_id is not None:
+        conditions.append(Execution.worker_id == worker_id)
+    if start_time_from is not None:
+        conditions.append(Execution.start_time >= start_time_from)
+    if start_time_to is not None:
+        conditions.append(Execution.start_time <= start_time_to)
+
+    stm = (
+        select(Execution)
+        .where(*conditions)
+        .order_by(direction(order_column))
+        .offset(skip)
+        .limit(limited)
+    )
+    return list(db.scalars(stm).all())
+
+
 def get_executions_count_by_job_id(db: Session, job_id: int) -> int:
     """
     Counts the total number of execution records for a specific job.
@@ -648,7 +701,9 @@ def report_execution_result(  # noqa: C901
         exec_record.duration = int((end_time_utc - start_time_utc).total_seconds())
 
     log_reference = None
-    if report.log_path:
+    if report.log_path is not None:
+        validate_log_path(report.log_path)
+        validate_log_size(report.log_size)
         log_reference = db.scalar(
             select(LogReference).where(LogReference.execution_id == execution_id)
         )
@@ -661,7 +716,8 @@ def report_execution_result(  # noqa: C901
             db.add(log_reference)
         else:
             log_reference.log_path = report.log_path
-            log_reference.log_size = report.log_size or log_reference.log_size
+            if report.log_size is not None:
+                log_reference.log_size = report.log_size
 
     db.commit()
     db.refresh(exec_record)

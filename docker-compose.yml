@@ -16,16 +16,19 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app  # 把本地程式碼掛載進去，方便開發
+      - ./logs:/app/logs
     env_file:
       - ./backend/.env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - LOG_ROOT=/app/logs
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+
   backend-worker:
     build:
       context: ./backend
@@ -33,12 +36,14 @@ services:
     container_name: group11-worker
     volumes:
       - ./backend:/app
+      - ./logs:/app/logs
     env_file:
       - ./backend/.env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - PYTHONPATH=/app
+      - LOG_ROOT=/app/logs
     depends_on:
       db:
         condition: service_healthy
@@ -53,7 +58,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    restart: unless-stopped 
+    restart: unless-stopped
 
   db:
     image: mysql:8.4
@@ -72,8 +77,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  
-  
 
 volumes:
   mysql_data:
