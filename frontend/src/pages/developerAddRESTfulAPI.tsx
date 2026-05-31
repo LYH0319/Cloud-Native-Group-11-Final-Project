@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
 import { type User, type JobBody } from '../types/types';
 
-
-
 export const DeveloperAddRESTfulAPI = () => {
   const [method, setMethod] = useState('POST');
   const [endpoint, setEndpoint] = useState('');
-  const [jsonBody, setJsonBody] = useState('{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}');
+  const [jsonBody, setJsonBody] = useState(
+    '{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}'
+  );
   const navigate = useNavigate();
 
   const user: User = JSON.parse(localStorage.getItem('user') || '{}');
@@ -19,15 +19,15 @@ export const DeveloperAddRESTfulAPI = () => {
       const payload = {
         method,
         endpoint,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
         body: parsedBody
       };
 
       const res = await fetch('http://localhost:8000/api/jobs', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'x-emp-id': user.id 
+          'x-emp-id': user.id
         },
         body: JSON.stringify(payload)
       });
@@ -42,19 +42,19 @@ export const DeveloperAddRESTfulAPI = () => {
     <div className="bg-light min-vh-100">
       <div style={Styles.styles.header}>
         <span>Job scheduler System</span>
-        
+
         <div className="d-flex flex-column align-item-center">
           <div className="d-flex flex-raw">
-            <button 
-              className="btn btn-light btn-sm px-3 mb-2" 
-              onClick={() => navigate('/developer')} 
+            <button
+              className="btn btn-light btn-sm px-3 mb-2"
+              onClick={() => navigate('/developer')}
               style={Styles.homeLoginLogoutStyles.style}
             >
               上一頁
             </button>
-            <button 
-              className="btn btn-light btn-sm px-3 mb-2" 
-              onClick={() => navigate('/')} 
+            <button
+              className="btn btn-light btn-sm px-3 mb-2"
+              onClick={() => navigate('/')}
               style={Styles.homeLoginLogoutStyles.style}
             >
               回首頁
@@ -64,20 +64,34 @@ export const DeveloperAddRESTfulAPI = () => {
         </div>
       </div>
 
-      <div className="container mt-4"> 
+      <div className="container mt-4">
         <h4>新增 RESTful API 任務</h4>
         <div className="row">
           <div>
-            <input type="text" className="form-control mb-2" placeholder="Method (ex: POST)" value={method} onChange={e => setMethod(e.target.value)} />
-            <input type="text" className="form-control mb-2" placeholder="Endpoint (ex: /v1/run)" value={endpoint} onChange={e => setEndpoint(e.target.value)} />
-            <textarea 
-              className="form-control mb-2" 
-              rows={6} 
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="Method (ex: POST)"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+            />
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="Endpoint (ex: /v1/run)"
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+            />
+            <textarea
+              className="form-control mb-2"
+              rows={6}
               placeholder={`填入 JobBody JSON，例如:\n{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}`}
               value={jsonBody}
-              onChange={e => setJsonBody(e.target.value)}
+              onChange={(e) => setJsonBody(e.target.value)}
             />
-            <button onClick={handleSubmit} className="btn btn-success">註冊 Job</button>
+            <button onClick={handleSubmit} className="btn btn-success">
+              註冊 Job
+            </button>
           </div>
         </div>
       </div>

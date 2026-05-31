@@ -23,16 +23,19 @@ export const Operator = () => {
       <h2>維運監控儀表板</h2>
       <hr />
       <div className="alert alert-info">
-        系統目前負載: 45% | Worker 節點: 3 
+        系統目前負載: 45% | Worker 節點: 3
         <button className="btn btn-sm btn-outline-dark float-end">擴充節點 (+)</button>
       </div>
-      
+
       <h4>所有 Job 執行狀況</h4>
       <ul className="list-group mt-3">
-        {jobs.map(job => (
-          <li key={job.job_id} className="list-group-item d-flex justify-content-between align-items-center">
+        {jobs.map((job) => (
+          <li
+            key={job.job_id}
+            className="list-group-item d-flex justify-content-between align-items-center"
+          >
             <div>
-              <strong>{job.job_id}</strong> - 路由: {job.details.endpoint} (建立者: {job.owner}) 
+              <strong>{job.job_id}</strong> - 路由: {job.details.endpoint} (建立者: {job.owner})
               <span className="badge bg-secondary ms-2">狀態: {job.status}</span>
             </div>
             <button className="btn btn-sm btn-warning">手動觸發</button>

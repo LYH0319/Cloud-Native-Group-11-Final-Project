@@ -16,27 +16,39 @@ const App = () => {
 
         <Route path="/admin" element={<Admin />} />
 
-        <Route path="/developer" element={
-          <RouteGuard allowedRole="developer">
-            <DeveloperHome />
-          </RouteGuard>
-        } />
-        <Route path="/developer/RESTfulAPI" element={
-          <RouteGuard allowedRole="developer">
-            <DeveloperAddRESTfulAPI />
-          </RouteGuard>
-        } />
-        <Route path="/developer/ShellScript" element={
-          <RouteGuard allowedRole="developer">
-            <DeveloperAddShellScript />
-          </RouteGuard>
-        } />
+        <Route
+          path="/developer"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperHome />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/RESTfulAPI"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperAddRESTfulAPI />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/ShellScript"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperAddShellScript />
+            </RouteGuard>
+          }
+        />
 
-        <Route path="/operator" element={
-          <RouteGuard allowedRole="operator">
-            <Operator />
-          </RouteGuard>
-        } />
+        <Route
+          path="/operator"
+          element={
+            <RouteGuard allowedRole="operator">
+              <Operator />
+            </RouteGuard>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );

@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
 import { type User, type JobBody } from '../types/types';
 
-
-
 export const DeveloperAddShellScript = () => {
   const [method, setMethod] = useState('POST');
   const [endpoint, setEndpoint] = useState('');
-  const [jsonBody, setJsonBody] = useState('{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}');
+  const [jsonBody, setJsonBody] = useState(
+    '{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}'
+  );
   const navigate = useNavigate();
 
   const user: User = JSON.parse(localStorage.getItem('user') || '{}');
@@ -19,15 +19,15 @@ export const DeveloperAddShellScript = () => {
       const payload = {
         method,
         endpoint,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
         body: parsedBody
       };
 
       const res = await fetch('http://localhost:8000/api/jobs', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'x-emp-id': user.id 
+          'x-emp-id': user.id
         },
         body: JSON.stringify(payload)
       });
@@ -42,34 +42,48 @@ export const DeveloperAddShellScript = () => {
     <div className="bg-light min-vh-100">
       <div style={Styles.styles.header}>
         <span>Job scheduler System</span>
-        
+
         <div className="d-flex flex-column align-items-end">
-          <button 
-            className="btn btn-light btn-sm px-3 mb-2" 
-            onClick={() => navigate('/')} 
+          <button
+            className="btn btn-light btn-sm px-3 mb-2"
+            onClick={() => navigate('/')}
             style={Styles.homeLoginLogoutStyles.style}
           >
             回首頁
           </button>
-          
+
           <h2 className="fs-5 m-0 font-weight-bold">內部開發者專區</h2>
         </div>
       </div>
 
-      <div className="container mt-4"> 
+      <div className="container mt-4">
         <h4>註冊新 Job</h4>
         <div className="row">
           <div className="col-md-6">
-            <input type="text" className="form-control mb-2" placeholder="Method (ex: POST)" value={method} onChange={e => setMethod(e.target.value)} />
-            <input type="text" className="form-control mb-2" placeholder="Endpoint (ex: /v1/run)" value={endpoint} onChange={e => setEndpoint(e.target.value)} />
-            <textarea 
-              className="form-control mb-2" 
-              rows={6} 
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="Method (ex: POST)"
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+            />
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="Endpoint (ex: /v1/run)"
+              value={endpoint}
+              onChange={(e) => setEndpoint(e.target.value)}
+            />
+            <textarea
+              className="form-control mb-2"
+              rows={6}
               placeholder={`填入 JobBody JSON，例如:\n{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}`}
               value={jsonBody}
-              onChange={e => setJsonBody(e.target.value)}
+              onChange={(e) => setJsonBody(e.target.value)}
             />
-            <button onClick={handleSubmit} className="btn btn-success">註冊 Job</button>
+            <button onClick={handleSubmit} className="btn btn-success">
+              註冊 Job
+            </button>
           </div>
         </div>
       </div>
