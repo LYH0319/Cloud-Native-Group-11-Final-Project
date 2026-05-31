@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -109,11 +110,29 @@ def test_get_job_executions_success(client, api_db_session):
     assert body["items"][0]["job_id"] == job.job_id
 
 
-def test_manual_trigger_returns_execution_and_dispatch_preview(
+@patch("src.api.routers.jobs.dispatch_task")
+def test_manual_trigger_creates_execution_and_dispatches(
+    mock_dispatch,
     client,
     api_db_session,
 ):
     job = _create_job(api_db_session)
+    mock_dispatch.return_value = {
+        "queued": True,
+        "queue_name": "job_priority_queue",
+        "task_payload": {
+            "execution_id": 1,
+            "job_id": job.job_id,
+            "task_type": "http",
+            "payload": {
+                "method": "GET",
+                "endpoint": "http://test.com/api-history",
+                "headers": {},
+                "body": {},
+            },
+            "timeout_threshold": 300,
+        },
+    }
 
     response = client.post(f"/api/jobs/{job.job_id}/trigger")
 
@@ -122,7 +141,8 @@ def test_manual_trigger_returns_execution_and_dispatch_preview(
     assert body["execution"]["job_id"] == job.job_id
     assert body["execution"]["trigger_type"] == "Manual"
     assert body["execution"]["status"] == "Pending"
-    assert body["dispatch"]["queued"] is False
+    assert body["dispatch"]["queued"] is True
+    assert body["dispatch"]["queue_name"] == "job_priority_queue"
     assert body["dispatch"]["task_payload"]["job_id"] == job.job_id
     assert (
         body["dispatch"]["task_payload"]["execution_id"]
@@ -134,6 +154,40 @@ def test_manual_trigger_returns_execution_and_dispatch_preview(
         body["dispatch"]["task_payload"]["payload"]["endpoint"]
         == "http://test.com/api-history"
     )
+    mock_dispatch.assert_called_once()
+
+
+@patch("src.api.routers.jobs.dispatch_task")
+def test_manual_trigger_does_not_require_next_run_time(
+    mock_dispatch,
+    client,
+    api_db_session,
+):
+    job = _create_job(api_db_session, "api_manual_no_run")
+    job.next_run_time = None
+    api_db_session.commit()
+    mock_dispatch.return_value = {
+        "queued": True,
+        "queue_name": "job_priority_queue",
+        "task_payload": {
+            "execution_id": 1,
+            "job_id": job.job_id,
+            "task_type": "http",
+            "payload": {
+                "method": "GET",
+                "endpoint": "http://test.com/api-history",
+                "headers": {},
+                "body": {},
+            },
+            "timeout_threshold": 300,
+        },
+    }
+
+    response = client.post(f"/api/jobs/{job.job_id}/trigger")
+
+    assert response.status_code == 201
+    assert response.json()["execution"]["status"] == "Pending"
+    mock_dispatch.assert_called_once()
 
 
 def test_get_job_executions_job_not_found(client):
@@ -257,6 +311,47 @@ def test_register_job_without_depends_on_sets_has_dependency_false(
     )
     assert job is not None
     assert job.has_dependency is False
+    assert job.next_run_time is not None
+
+
+def test_register_recurring_job_computes_next_run_time(client, api_db_session):
+    _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Recurring",
+            "method": "GET",
+            "endpoint": "http://test.com/recurring",
+            "schedule_type": "Recurring",
+            "cron_expression": "*/5 * * * *",
+        },
+    )
+
+    assert response.status_code == 201
+    job = crud.get_job_by_id(
+        db=api_db_session,
+        job_id=response.json()["job_id"],
+    )
+    assert job is not None
+    assert job.next_run_time is not None
+
+
+def test_register_recurring_job_rejects_invalid_cron(client, api_db_session):
+    _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Bad Cron",
+            "method": "GET",
+            "endpoint": "http://test.com/bad-cron",
+            "schedule_type": "Recurring",
+            "cron_expression": "not a cron",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_register_job_with_depends_on_sets_has_dependency_true(
