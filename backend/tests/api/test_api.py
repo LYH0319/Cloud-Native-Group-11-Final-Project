@@ -109,21 +109,22 @@ def test_get_job_executions_success(client, api_db_session):
     assert body["items"][0]["job_id"] == job.job_id
 
 
-@patch("src.api.routers.jobs.dispatch_task")
 def test_manual_trigger_returns_executgition_and_dispatch_preview(
     client,
     api_db_session,
 ):
     job = _create_job(api_db_session)
 
-    response = client.post(f"/api/jobs/{job.job_id}/trigger")
+    with patch("src.api.routers.jobs.dispatch_task"):
+        response = client.post(f"/api/jobs/{job.job_id}/trigger")
 
     assert response.status_code == 201
     body = response.json()
     assert body["execution"]["job_id"] == job.job_id
     assert body["execution"]["trigger_type"] == "Manual"
     assert body["execution"]["status"] == "Pending"
-    assert body["dispatch"]["queued"] is False
+
+    assert body["dispatch"]["queued"] is True
     assert body["dispatch"]["task_payload"]["job_id"] == job.job_id
     assert (
         body["dispatch"]["task_payload"]["execution_id"]

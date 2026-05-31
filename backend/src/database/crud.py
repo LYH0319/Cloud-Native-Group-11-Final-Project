@@ -875,7 +875,7 @@ def get_log_reference_by_execution_id(
 
 
 # 從jobs.py搬過來的
-def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
+def get_active_dependency_graph(db: Session) -> dict[int, list[int]]:
     """從資料庫讀取目前的相依性關係，並打包成鄰接串列"""
     graph = {}
     # 透過 join 篩選，只有兩端任務都還活著 (ACTIVE) 的關聯才需要進圖進行死鎖判定
