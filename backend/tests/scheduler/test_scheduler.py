@@ -10,12 +10,37 @@ from src.database.models import (
     JobStatus,
     ExecutionStatus,
     TriggerType,
-)
+    JobDependency,
+    Execution
+) 
 from src.database import schemas
 from src.database import crud
 
 # Import the module to be tested
 from src.scheduler.cron_scheduler import check_predecessors_done, start_cron_scheduler
+
+# =====================================================================
+#   自動建表版裝配器：確保每次跑測試，MySQL 裡面的資料表都是蓋好的！
+# =====================================================================
+from sqlalchemy.orm import Session
+from src.database.core import SessionLocal, engine
+from src.database.models import Base
+
+@pytest.fixture(scope="function")
+def db_session():
+    """
+    建立一個乾淨、獨立的資料庫 Session 給每個測試案例使用。
+    """
+    Base.metadata.create_all(bind=engine)
+    
+    session: Session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.rollback()  # 關鍵：測試完自動復原
+        session.close()     # 釋放連線
+
+
 
 # ==========================================
 # 1. Test: check_predecessors_done
@@ -25,50 +50,137 @@ from src.scheduler.cron_scheduler import check_predecessors_done, start_cron_sch
 def test_check_predecessors_done_no_upstream(db_session):
     """Test that a job with no upstream dependencies returns True immediately."""
     # Arrange: Create a job with no dependencies
+    user = schemas.UserCreate(employee_id="user_001", username="User 1", role=UserRole.DEVELOPER)
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_data = schemas.JobCreate(
+        job_name="independent_job", 
+        method=HttpMethod.GET, 
+        endpoint="http://test.com", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    job = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=job_data)
 
     # Act: Call check_predecessors_done
+    result = check_predecessors_done(db=db_session, job_id=job.job_id)
 
     # Assert: Verify the result is True
-    pass
+    assert result is True
 
 
 def test_check_predecessors_done_upstream_success(db_session):
     """Test that a job returns True if its upstream job's latest execution is SUCCESS."""
     # Arrange:
     # 1. Create upstream job and downstream job
-    # 2. Create JobDependency linking them
-    # 3. Create an Execution for upstream job with status SUCCESS
+    user = schemas.UserCreate(employee_id="user_002", username="User 2", role=UserRole.DEVELOPER)
+    created_user = crud.create_user(db=db_session, user_in=user)
 
+    job_data = schemas.JobCreate(
+        job_name="upstream", 
+        method=HttpMethod.GET, 
+        endpoint="http://test.com/up", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    upstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=job_data)
+    
+    downstream_data = schemas.JobCreate(
+        job_name="downstream", 
+        method=HttpMethod.GET, 
+        endpoint="http://test.com/down", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    downstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=downstream_data)
+
+    # 2. Create JobDependency linking them
+    dep = JobDependency(upstream_id=upstream.job_id, downstream_id=downstream.job_id)
+    db_session.add(dep)
+
+    # 3. Create an Execution for upstream job with status SUCCESS
+    exec_record = crud.create_execution(db=db_session, job_id=upstream.job_id, trigger_type=TriggerType.SCHEDULER)
+    crud.update_execution_status(db=db_session, execution_id=exec_record.execution_id, status=ExecutionStatus.SUCCESS)
+    db_session.commit()
+    
     # Act: Call check_predecessors_done on downstream job
+    result = check_predecessors_done(db=db_session, job_id=downstream.job_id)
 
     # Assert: Verify the result is True
-    pass
+    assert result is True
 
 
 def test_check_predecessors_done_upstream_no_execution(db_session):
     """Test that a job returns False if its upstream job has never been executed."""
     # Arrange:
     # 1. Create upstream job and downstream job
+    user = schemas.UserCreate(employee_id="user_003", username="User 3", role=UserRole.DEVELOPER)
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_data = schemas.JobCreate(
+        job_name="up", 
+        method=HttpMethod.GET, 
+        endpoint="http://a", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    upstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=job_data)
+    
+    downstream_data = schemas.JobCreate(
+        job_name="down", 
+        method=HttpMethod.GET, 
+        endpoint="http://b", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    downstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=downstream_data)
+
     # 2. Create JobDependency
+    dep = JobDependency(upstream_id=upstream.job_id, downstream_id=downstream.job_id)
+    db_session.add(dep)
+
     # 3. DO NOT create any Execution records
+    db_session.commit()
 
     # Act: Call check_predecessors_done on downstream job
+    result = check_predecessors_done(db=db_session, job_id=downstream.job_id)
 
     # Assert: Verify the result is False
-    pass
+    assert result is False
 
 
 def test_check_predecessors_done_upstream_failed(db_session):
     """Test that a job returns False if its upstream job's latest execution is FAILED."""
     # Arrange:
     # 1. Create upstream job and downstream job
+    user = schemas.UserCreate(employee_id="user_004", username="User 4", role=UserRole.DEVELOPER)
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    job_data = schemas.JobCreate(
+        job_name="up", 
+        method=HttpMethod.GET, 
+        endpoint="http://a", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    upstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=job_data)
+    
+    downstream_data = schemas.JobCreate(
+        job_name="down", 
+        method=HttpMethod.GET, 
+        endpoint="http://b", 
+        schedule_type=ScheduleType.ONE_TIME
+    )
+    downstream = crud.create_job(db=db_session, owner_id=created_user.user_id, job_in=downstream_data)
+
     # 2. Create JobDependency
+    dep = JobDependency(upstream_id=upstream.job_id, downstream_id=downstream.job_id)
+    db_session.add(dep)
+
     # 3. Create an Execution for upstream job with status FAILED
+    exec_record = crud.create_execution(db=db_session, job_id=upstream.job_id, trigger_type=TriggerType.SCHEDULER)
+    crud.update_execution_status(db=db_session, execution_id=exec_record.execution_id, status=ExecutionStatus.FAILED)
+    db_session.commit()
 
     # Act: Call check_predecessors_done on downstream job
+    result = check_predecessors_done(db=db_session, job_id=downstream.job_id)
 
     # Assert: Verify the result is False
-    pass
+    assert result is False
 
 
 # ==========================================
