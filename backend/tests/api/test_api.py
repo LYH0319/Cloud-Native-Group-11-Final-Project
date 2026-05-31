@@ -17,7 +17,7 @@ from src.database.models import (
     UserRole,
 )
 from src.utils import logger as log_storage
-
+from unittest.mock import patch
 
 @pytest.fixture()
 def api_db_session():
