@@ -3,30 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { loginStyles } from './Style';
 import { type Role, type User } from '../types/types';
 
-interface MockUser {
-  id: string;
-  password?: string;
-  role: Role;
-}
-
-const COMPANY_DB: Record<string, MockUser> = {
-  '001': { id: '001', role: 'developer' },
-  '002': { id: '002', role: 'operator' }
-};
-
-const getMockDB = (): Record<string, MockUser> => {
-    const db = localStorage.getItem('mock_db');
-    if (!db) {
-        localStorage.setItem('mock_db', JSON.stringify(COMPANY_DB));
-        return COMPANY_DB;
-    }
-    return JSON.parse(db);
-};
-
-const saveMockDB = (db: Record<string, MockUser>) => {
-    localStorage.setItem('mock_db', JSON.stringify(db));
-};
-
 type LoginStep = 'checkId' | 'registerPassword' | 'registerSuccess' | 'loginPassword' | 'loginSuccess' | 'resetPassword' | 'resetSuccess';
 
 export const Login = () => {
@@ -38,19 +14,18 @@ export const Login = () => {
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
+    // 檢查是否已登入
     useEffect(() => {
         const savedUser = localStorage.getItem('user');
         if (savedUser) {
             console.log('偵測到已登入狀態，自動跳轉。');
-            const savedUser = localStorage.getItem('user');
-            if (savedUser) {
-                const user: User = JSON.parse(savedUser);
-                if (user.role === 'developer') {
-                    navigate('/developer');
-                }
-                else if (user.role === 'operator') {
-                    navigate('/operator');
-                }
+            const user: User = JSON.parse(savedUser);
+            if (user.role === 'developer') {
+                navigate('/developer');
+            } else if (user.role === 'operator') {
+                navigate('/operator');
+            } else if (user.role === 'admin') {
+                navigate('/admin');
             }
         }
     }, [navigate]);
@@ -71,6 +46,7 @@ export const Login = () => {
         navigate('/');
     }
 
+    // 1. 檢查員工編號是否存在與是否已註冊密碼
     const checkIdHandler = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
@@ -80,50 +56,29 @@ export const Login = () => {
         setId(trimmedId);
 
         try {
-            // const response = await fetch('/api/auth/check-id', {
-            //     method: 'POST',
-            //     headers: { 'Content-Type': 'application/json'},
-            //     body: JSON.stringify({ trimmedId })
-            // })
+            const response = await fetch('/api/auth/check-id', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                // 建議與後端參數對齊，例如傳遞 employee_id
+                body: JSON.stringify({ employee_id: trimmedId }) 
+            });
 
-            // if(!response.ok) {
-            //     throw new Error('can not find ID');
-            // } 
+            if (!response.ok) {
+                throw new Error('Can not find ID');
+            } 
 
-            // const data = await response.json();
+            // 預期後端回傳格式: { isRegistered: true/false } (是否有密碼)
+            const data = await response.json(); 
 
-            // if(data.isRegistered) {
-            //     setStep('loginPassword');
-            // }
-            // else {
-            //     setStep('registerPassword');
-            // }
-
-            const db = getMockDB();
-            const user = db[trimmedId];
-            if (!user) {
-                throw new Error('can not find ID');
-            }
-            if (user.password) {
+            if (data.isRegistered) {
                 setStep('loginPassword');
-            }
-            else {
+            } else {
                 setStep('registerPassword');
             }
             setCounter(0);
         }
         catch (error) {
-            if(counter >= 2) {
-              setErrMessage('請不要亂打！錯誤超過 5 次會被踢回首頁喔');
-            }
-            else {
-              setErrMessage('查無此員工編號！請重新輸入');
-            }
-            if(counter >= 5) {
-              backToHomeHandler();
-              alert('你已經輸入錯誤太多次了！bye bye~');
-              return;
-            }
+            setErrMessage('查無此員工編號！請重新輸入');
             setId('');
             console.error(error);
             setCounter(prev => prev + 1);
@@ -133,28 +88,22 @@ export const Login = () => {
         }
     };
 
+    // 2. 註冊新密碼
     const registerPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
         setErrMessage('');
 
         try {
-            // const response = await fetch('/api/auth/register-password', {
-            //     method: 'POST',
-            //     headers: { 'Content-Type': 'application/json'},
-            //     body: JSON.stringify({ id, password })
-            // })
+            const response = await fetch('/api/auth/register-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({ employee_id: id, password })
+            });
 
-            // if(!response.ok) {
-            //     throw new Error('registration failed');
-            // }
-            const db = getMockDB();            
-            if (!db[id]) {
-                throw new Error('registration failed');
+            if (!response.ok) {
+                throw new Error('Registration failed');
             }
-
-            db[id].password = password;
-            saveMockDB(db);
 
             setPassword('');
             setStep('registerSuccess');
@@ -170,45 +119,35 @@ export const Login = () => {
         }
     };
 
+    // 3. 登入驗證
     const loginPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
         setErrMessage('');
 
         try {
-            // const response = await fetch('/api/auth/login-password', {
-            //     method: 'POST',
-            //     headers: { 'Content-Type': 'application/json'},
-            //     body: JSON.stringify({ id, password })
-            // })
+            const response = await fetch('/api/auth/login-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({ employee_id: id, password })
+            });
 
-            // if(!response.ok) {
-            //     throw new Error('password incorrect');
-            // }
-
-            // const data = await response.json();
-            // localStorage.setItem('user', JSON.stringify(data));
-            const db = getMockDB();            
-
-            if (db[id].password !== password) {
-                throw new Error('password incorrect');
+            if (!response.ok) {
+                throw new Error('Password incorrect');
             }
 
-            const userData: User = {
-                id: db[id].id,
-                role: db[id].role
-            }
+            // 預期後端回傳使用者資訊，例如: { id: "001", role: "developer" }
+            const userData = await response.json();
             localStorage.setItem('user', JSON.stringify(userData));
 
             setStep('loginSuccess');
             setCounter(0);
         }
         catch (error) {
-            if(counter >= 2) {
-              setErrMessage('是不是忘記密碼了？可以點擊忘記密碼重新設定');
-            }
-            else {
-              setErrMessage('密碼錯誤！請重新輸入');
+            if (counter >= 2) {
+                setErrMessage('是不是忘記密碼了？可以點擊忘記密碼重新設定');
+            } else {
+                setErrMessage('密碼錯誤！請重新輸入');
             }
             setPassword('');
             console.error(error);
@@ -219,19 +158,22 @@ export const Login = () => {
         }
     };
 
+    // 4. 重設密碼
     const resetPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
         setErrMessage('');
 
         try {
-            const db = getMockDB();
-            if (!db[id]) {
-                throw new Error('User not found');
-            }
+            const response = await fetch('/api/auth/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json'},
+                body: JSON.stringify({ employee_id: id, new_password: password })
+            });
 
-            db[id].password = password;
-            saveMockDB(db);
+            if (!response.ok) {
+                throw new Error('Reset password failed');
+            }
 
             setPassword('');
             setStep('resetSuccess');
@@ -247,18 +189,9 @@ export const Login = () => {
         }
     };
 
+    // 成功畫面的計時跳轉邏輯
     useEffect(() => {
-        if (step === 'registerSuccess') {
-            const timer = setTimeout(() => {
-                setStep('loginPassword');
-            }, 2000);
-
-            return () => clearTimeout(timer);
-        }
-    }, [step]);
-
-    useEffect(() => {
-        if (step === 'resetSuccess') {
+        if (step === 'registerSuccess' || step === 'resetSuccess') {
             const timer = setTimeout(() => {
                 setStep('loginPassword');
             }, 2000);
@@ -272,15 +205,11 @@ export const Login = () => {
                 const savedUser = localStorage.getItem('user');
                 if (savedUser) {
                     const user: User = JSON.parse(savedUser);
-                    if (user.role === 'developer') {
-                        navigate('/developer');
-                    }
-                    else if (user.role === 'operator') {
-                        navigate('/operator');
-                    }
+                    if (user.role === 'developer') navigate('/developer');
+                    else if (user.role === 'operator') navigate('/operator');
+                    else if (user.role === 'admin') navigate('/admin');
                 }
             }, 2000);
-
             return () => clearTimeout(timer);
         }
     }, [step, navigate]);
