@@ -109,7 +109,8 @@ def test_get_job_executions_success(client, api_db_session):
     assert body["items"][0]["job_id"] == job.job_id
 
 
-def test_manual_trigger_returns_execution_and_dispatch_preview(
+@patch("src.api.routers.jobs.dispatch_task")
+def test_manual_trigger_returns_executgition_and_dispatch_preview(
     client,
     api_db_session,
 ):
