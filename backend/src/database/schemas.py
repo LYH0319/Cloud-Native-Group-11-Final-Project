@@ -124,7 +124,14 @@ class JobCreate(JobBase):
     Inherits all attributes from JobBase.
     """
 
-    pass
+    job_name: str
+    method: HttpMethod
+    endpoint: str
+    schedule_type: ScheduleType
+    headers: Optional[dict] = None
+    body: Optional[dict] = None
+    cron_expression: Optional[str] = None
+    depends_on: Optional[list[int]] = None # 💡 請他加上這一行！
 
 
 class JobResponse(JobBase):

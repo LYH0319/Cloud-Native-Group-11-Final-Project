@@ -11,6 +11,7 @@ from src.database.models import (
     TriggerType,
     JobDependency,
     LogReference,
+    JobStatus
 )
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
@@ -904,3 +905,28 @@ def get_log_reference_by_execution_id(
     return db.scalar(
         select(LogReference).where(LogReference.execution_id == execution_id)
     )
+
+
+# 從jobs.py搬過來的
+def get_active_dependency_graph(db: Session) -> dict[int, list[int]]:
+    """從資料庫讀取目前的相依性關係，並打包成鄰接串列"""
+    graph = {}
+    # 透過 join 篩選，只有兩端任務都還活著 (ACTIVE) 的關聯才需要進圖進行死鎖判定
+    stm = (
+        select(JobDependency)
+        .join(Job, JobDependency.downstream_id == Job.job_id)
+        .where(Job.status == JobStatus.ACTIVE)
+    )
+    dependencies = db.scalars(stm).all()
+    for dep in dependencies:
+        if dep.downstream_id not in graph:
+            graph[dep.downstream_id] = []
+        graph[dep.downstream_id].append(dep.upstream_id)
+    return graph
+
+def create_job_dependencies(db: Session, downstream_id: int, upstream_ids: list[int]) -> None:
+    """將多筆前置關聯批次安全寫入 job_dependencies 表"""
+    for upstream_id in upstream_ids:
+        dep_record = JobDependency(upstream_id=upstream_id, downstream_id=downstream_id)
+        db.add(dep_record)
+    db.commit()

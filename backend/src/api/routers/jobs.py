@@ -1,51 +1,16 @@
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
+from config.setting import settings
 from src.api.dependencies import get_current_user
 from src.database.core import get_db
-from src.database.models import (
-    HttpMethod,
-    Job,
-    JobDependency,
-    JobStatus,
-    ScheduleType,
-    TriggerType,
-    User,
-)
+from src.database.models import JobStatus, TriggerType, User
 from src.utils.cycle_detection import has_cycle
+from src.worker.executor import dispatch_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-
-
-class JobCreateRequest(BaseModel):
-    job_name: str
-    method: HttpMethod
-    endpoint: str
-    schedule_type: ScheduleType
-    headers: Optional[dict] = None
-    body: Optional[dict] = None
-    cron_expression: Optional[str] = None
-    depends_on: Optional[List[int]] = None
-
-
-def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
-    """Read active job dependency edges as an adjacency list."""
-    graph: dict[int, list[int]] = {}
-    stm = (
-        select(JobDependency)
-        .join(Job, JobDependency.downstream_id == Job.job_id)
-        .where(Job.status == JobStatus.ACTIVE)
-    )
-    dependencies = db.scalars(stm).all()
-    for dep in dependencies:
-        graph.setdefault(dep.downstream_id, []).append(dep.upstream_id)
-    return graph
 
 
 @router.get("/", response_model=list[schemas.JobResponse])
@@ -80,7 +45,7 @@ def get_job(
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def register_job(
-    payload: JobCreateRequest,
+    payload: schemas.JobCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -95,7 +60,7 @@ def register_job(
                     detail="Dependency job not found",
                 )
 
-        current_graph = fetch_dependency_graph_from_db(db)
+        current_graph = crud.get_active_dependency_graph(db)
         current_graph[0] = depends_on
         if has_cycle(0, current_graph):
             raise HTTPException(
@@ -106,14 +71,11 @@ def register_job(
     new_job = crud.create_job(db=db, owner_id=current_user.user_id, job_in=payload)
 
     if depends_on:
-        for upstream_id in depends_on:
-            crud.create_job_dependency(
-                db=db,
-                dependency_in=schemas.JobDependencyCreate(
-                    upstream_id=upstream_id,
-                    downstream_id=new_job.job_id,
-                ),
-            )
+        crud.create_job_dependencies(
+            db=db,
+            downstream_id=new_job.job_id,
+            upstream_ids=depends_on,
+        )
         new_job.has_dependency = True
         db.commit()
         db.refresh(new_job)
@@ -131,16 +93,12 @@ def manually_trigger_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Create an execution record for a manual trigger.
-
-    The current project version records the manual execution request in the
-    metadata database and returns a dispatch payload preview.
-    """
+    """Create a manual execution and enqueue it for worker execution."""
     job = crud.get_job_by_id(db=db, job_id=job_id)
     if job is None or job.status == JobStatus.DELETED:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
         )
     if job.owner_id != current_user.user_id:
         raise HTTPException(
@@ -158,25 +116,28 @@ def manually_trigger_job(
         job_id=job_id,
         trigger_type=TriggerType.MANUAL,
     )
-    task_payload = {
-        "execution_id": execution.execution_id,
+    task_payload_dict = {
         "job_id": job.job_id,
-        "task_type": "http",
-        "payload": {
-            "method": job.method.value,
-            "endpoint": job.endpoint,
-            "headers": job.headers or {},
-            "body": job.body or {},
-        },
-        "timeout_threshold": 60,
+        "method": job.method.value,
+        "endpoint": job.endpoint,
+        "headers": job.headers or {},
+        "body": job.body or {},
+        "timeout": 60,
     }
+    dispatch_task(execution_id=execution.execution_id, job_dict=task_payload_dict)
 
     return {
         "execution": execution,
         "dispatch": {
-            "queued": False,
-            "queue_name": None,
-            "reason": "Queue dispatch is not implemented yet.",
-            "task_payload": task_payload,
+            "queued": True,
+            "queue_name": settings.JOB_QUEUE_NAME,
+            "reason": "Successfully dispatched to Redis distributed queue.",
+            "task_payload": {
+                "execution_id": execution.execution_id,
+                "job_id": job.job_id,
+                "task_type": "http",
+                "payload": task_payload_dict,
+                "timeout_threshold": 60,
+            },
         },
     }
