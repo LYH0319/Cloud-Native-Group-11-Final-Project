@@ -53,7 +53,7 @@ jobs:
       
     - name: Backend Test report
       uses: dorny/test-reporter@v3
-      if: ${{ !cancelled() }}
+      if: ${{ !cancelled() && env.ACT != 'true' }}
       with:
         name: Pytest Results
         path: backend/reports/pytest-results.xml
