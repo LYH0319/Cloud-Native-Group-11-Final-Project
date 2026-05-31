@@ -62,6 +62,52 @@ def test_get_user_by_employee_id_not_found(db_session):
     assert result is None
 
 
+def test_get_user_by_email_success(db_session):
+    """Test that a user can be retrieved by email."""
+    user = schemas.UserCreate(
+        employee_id="email_user",
+        username="EmailUser",
+        role=UserRole.DEVELOPER,
+        email="email-user@example.com",
+        password="secret123",
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+
+    result = crud.get_user_by_email(db=db_session, email="email-user@example.com")
+
+    assert result.user_id == created_user.user_id
+    assert result.hashed_password != "secret123"
+
+
+def test_authenticate_user_success_and_failure(db_session):
+    """Test password verification through authenticate_user."""
+    crud.create_user(
+        db=db_session,
+        user_in=schemas.UserCreate(
+            employee_id="auth_crud",
+            username="AuthCrud",
+            role=UserRole.DEVELOPER,
+            email="auth-crud@example.com",
+            password="secret123",
+        ),
+    )
+
+    authenticated = crud.authenticate_user(
+        db=db_session,
+        identifier="auth-crud@example.com",
+        password="secret123",
+    )
+    rejected = crud.authenticate_user(
+        db=db_session,
+        identifier="auth-crud@example.com",
+        password="wrong",
+    )
+
+    assert authenticated is not None
+    assert authenticated.username == "AuthCrud"
+    assert rejected is None
+
+
 # ==========================================
 # 3. Test: Update User Role
 # ==========================================

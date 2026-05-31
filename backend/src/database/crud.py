@@ -16,6 +16,7 @@ from src.database.models import (
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
 from src.utils.logger import validate_log_path, validate_log_size
+from src.utils.security import hash_password, verify_password
 
 # ==========================================
 #                  USER CRUD
@@ -34,7 +35,11 @@ def create_user(db: Session, user_in: schemas.UserCreate) -> User:
         User: The newly created user object.
     """
     new_user = User(
-        employee_id=user_in.employee_id, username=user_in.username, role=user_in.role
+        employee_id=user_in.employee_id,
+        username=user_in.username,
+        role=user_in.role,
+        email=user_in.email,
+        hashed_password=hash_password(user_in.password) if user_in.password else None,
     )
     db.add(new_user)
     db.commit()
@@ -68,6 +73,34 @@ def get_user_by_employee_id(db: Session, employee_id: str) -> User | None:
         User | None: The user object if found, otherwise None.
     """
     return db.scalar(select(User).where(User.employee_id == employee_id))
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    """Retrieves a user by email."""
+    return db.scalar(select(User).where(User.email == email))
+
+
+def get_user_by_username(db: Session, username: str) -> User | None:
+    """Retrieves a user by username."""
+    return db.scalar(select(User).where(User.username == username))
+
+
+def authenticate_user(
+    db: Session,
+    identifier: str,
+    password: str,
+) -> User | None:
+    """Authenticate by email, username, or employee_id."""
+    user = (
+        get_user_by_email(db=db, email=identifier)
+        or get_user_by_username(db=db, username=identifier)
+        or get_user_by_employee_id(db=db, employee_id=identifier)
+    )
+    if not user or not user.is_active:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
 
 
 def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
