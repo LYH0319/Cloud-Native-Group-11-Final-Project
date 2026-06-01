@@ -27,6 +27,19 @@ class FakeRedis:
         return 1
 
 
+class FakeQueueRedis(FakeRedis):
+    def __init__(self, messages):
+        super().__init__()
+        self.messages = list(messages)
+        self.blpop_calls = 0
+
+    def blpop(self, *args, **kwargs):
+        self.blpop_calls += 1
+        if not self.messages:
+            raise KeyboardInterrupt
+        return ("job_priority_queue", self.messages.pop(0))
+
+
 class FakeHeartbeat:
     def __init__(self, r_client, task):
         self.r_client = r_client
@@ -186,3 +199,40 @@ def test_worker_idempotency_lock_prevents_double_processing(monkeypatch):
     executor.process_task(_task_for_status("Success"), FakeRedis(acquire_lock=False))
 
     assert reported_statuses == []
+
+
+def test_worker_loop_discards_invalid_json_and_keeps_listening(monkeypatch):
+    fake_redis = FakeQueueRedis(["not-json"])
+    monkeypatch.setattr(executor.Base.metadata, "create_all", lambda bind: None)
+    monkeypatch.setattr(executor, "get_redis_client", lambda: fake_redis)
+    monkeypatch.setattr(
+        executor,
+        "process_task",
+        lambda task, r_client: pytest.fail("invalid JSON should be discarded"),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        executor.worker_loop()
+
+    assert fake_redis.blpop_calls == 2
+
+
+def test_worker_loop_handles_invalid_task_payload_without_processing(monkeypatch):
+    fake_redis = FakeQueueRedis(['{"execution_id": 1}'])
+    monkeypatch.setattr(executor.Base.metadata, "create_all", lambda bind: None)
+    monkeypatch.setattr(executor, "get_redis_client", lambda: fake_redis)
+    monkeypatch.setattr(
+        executor,
+        "process_task",
+        lambda task, r_client: pytest.fail("invalid payload should not run"),
+    )
+    monkeypatch.setattr(
+        executor.time,
+        "sleep",
+        lambda seconds: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        executor.worker_loop()
+
+    assert fake_redis.blpop_calls == 1
