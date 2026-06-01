@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 from src.database.core import get_db
 
@@ -35,6 +35,10 @@ class JobCreateRequest(BaseModel):
     cron_expression: Optional[str] = None
     depends_on: Optional[List[int]] = None  # 前置任務的 job_id 列表
 
+    @computed_field
+    @property
+    def has_dependency(self) -> bool:
+        return bool(self.depends_on and len(self.depends_on) > 0)
 
 def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
     """從資料庫讀取目前的相依性關係，並打包成鄰接串列"""
@@ -74,9 +78,30 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="無法註冊此 Job：偵測到環狀相依關係 (Cycle Detected)！",
             )
-
+    
+    # 修正佳倩的Payload轉為跟沅籈CRUD預期的強型別Schema (by 宇嬅)
+    try:
+        # 將佳倩的 JobCreateRequest 轉成字典，並排除掉沅籈 create_job 不需要或重複處理的 depends_on
+        job_data = payload.model_dump(exclude={"depends_on"})
+        
+        # 動態補上沅籈需要的 has_dependency 計算結果
+        job_data["has_dependency"] = bool(payload.depends_on and len(payload.depends_on) > 0)
+        
+        # 如果前端傳進來的是空的 JSON 樣板，幫它優化成乾淨的空字典，防止 MySQL JSON 欄位崩潰
+        if job_data.get("headers") == {"additionalProp1": {}}: job_data["headers"] = {}
+        if job_data.get("body") == {"additionalProp1": {}}: job_data["body"] = {}
+        
+        # 核心對齊：使用沅籈定義在 src.database.schemas 裡的 JobCreate 強型別包裝！
+        # 這樣丢進 crud.create_job 絕對是一槍通關，再也不會噴 500
+        verified_job_in = schemas.JobCreate(**job_data)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"資料欄位轉換失敗，與資料庫 Schema 不符: {str(e)}"
+        )
     # 3. 呼叫寫好的資料庫建立函式
-    new_job = crud.create_job(db=db, owner_id=current_owner_id, job_in=payload)
+    new_job = crud.create_job(db=db, owner_id=current_owner_id, job_in=verified_job_in)
 
     # 4. 有相依性且通過檢測，將關聯寫入job_dependencies表
     if depends_on:

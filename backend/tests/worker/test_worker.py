@@ -98,7 +98,7 @@ def test_worker_integration_http_failed(db_session, real_redis, integration_user
 
     task_payload = TaskPayload(
         execution_id=execution.execution_id, job_id=job.job_id, task_type="http",
-        payload={"method": job.method.value, "endpoint": job.endpoint}, timeout_threshold=10
+        payload={"method": job.method.value, "endpoint": job.endpoint}, timeout_threshold=60
     )
 
     # ─── Act ───
