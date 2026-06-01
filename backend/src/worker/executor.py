@@ -196,6 +196,35 @@ def report_to_database(
 
 
 # ==========================================
+#          連結任務派發跟任務執行
+# ==========================================
+def dispatch_task(execution_id: int, job_dict: dict):
+    """
+    將API生成的實體execution_id與任務細節打包成JSON，推入Redis Message Queue中
+    """
+    r = redis.Redis(
+        host=settings.REDIS_HOST,
+        port=settings.REDIS_PORT,
+        db=settings.REDIS_DB
+    )
+    
+    task_payload = {
+        "execution_id": execution_id,
+        "job_id": job_dict["job_id"],
+        "task_type": "http",
+        "payload": {
+            "method": job_dict["method"],
+            "endpoint": job_dict["endpoint"],
+            "headers": job_dict["headers"] or {},
+            "body": job_dict["body"] or {}
+        },
+        "timeout_threshold": 30
+    }
+    
+    r.rpush(settings.JOB_QUEUE_NAME, json.dumps(task_payload))
+    logger.info(f" [MQ] 成功將實體任務交易推入Redis隊列，Execution ID: {execution_id}")
+
+# ==========================================
 #          任務核心分流與處理
 # ==========================================
 def process_task(task: TaskPayload, r_client: redis.Redis):
@@ -314,6 +343,17 @@ def worker_loop():
             logger.error(f"Worker Loop 內部發生未預期異常: {str(e)}")
             time.sleep(2)  # 暫停 2 秒，避免極端狀況下衝爆無窮迴圈
 
+def check_task_timeout(task) -> bool:
+    """檢查目前時間是否已經超過任務設定的超時門檻timeout_threshold"""
+    
+    # 如果任務沒有設定超時門檻，預設為安全
+    if not hasattr(task, "timeout_threshold") or not task.timeout_threshold:
+        return False
 
+    current_time = time.time()
+    # 計算是否已經超時
+    if current_time - task.start_time > task.timeout_threshold:
+        return True
+    return False
 if __name__ == "__main__":
     worker_loop()
