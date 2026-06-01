@@ -1,8 +1,12 @@
+import pytest
+
 from src.database import crud
 from src.database.models import User, UserRole, HttpMethod, ScheduleType, JobStatus
 from src.database import schemas
 from datetime import datetime, timedelta, timezone
 from src.database.models import TriggerType, ExecutionStatus
+
+pytestmark = pytest.mark.unit
 
 
 # ==========================================

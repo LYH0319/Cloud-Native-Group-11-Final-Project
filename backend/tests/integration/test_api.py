@@ -13,12 +13,16 @@ from src.database.connection import Base, get_db
 from src.database.models import (
     ExecutionStatus,
     HttpMethod,
+    JobStatus,
     ScheduleType,
     TriggerType,
     UserRole,
 )
 from src.utils import logger as log_storage
 from src.utils.security import create_access_token
+
+pytestmark = [pytest.mark.integration, pytest.mark.api, pytest.mark.auth]
+
 
 @pytest.fixture()
 def api_db_session():
@@ -150,6 +154,26 @@ def test_auth_register_rejects_duplicate_email_or_username(client):
     assert client.post("/api/auth/register", json=duplicate_username).status_code == 409
 
 
+def test_auth_register_rejects_duplicate_employee_id(client):
+    payload = {
+        "employee_id": "auth_user_2b",
+        "username": "AuthUserTwoB",
+        "email": "auth2b@example.com",
+        "password": "secret123",
+    }
+    assert client.post("/api/auth/register", json=payload).status_code == 201
+
+    duplicate_employee_id = {
+        **payload,
+        "username": "AuthUserTwoC",
+        "email": "auth2c@example.com",
+    }
+
+    response = client.post("/api/auth/register", json=duplicate_employee_id)
+
+    assert response.status_code == 409
+
+
 def test_auth_login_returns_access_token(client):
     client.post(
         "/api/auth/register",
@@ -187,6 +211,15 @@ def test_auth_login_invalid_password_fails(client):
     response = client.post(
         "/api/auth/login",
         json={"identifier": "auth6@example.com", "password": "wrong"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_invalid_token_is_rejected(client):
+    response = client.get(
+        "/api/jobs/",
+        headers={"Authorization": "Bearer not-a-valid-token"},
     )
 
     assert response.status_code == 401
@@ -475,6 +508,56 @@ def test_register_recurring_job_rejects_invalid_cron(client, api_db_session):
     assert response.status_code == 400
 
 
+def test_register_recurring_job_without_cron_is_rejected(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Missing Cron",
+            "method": "GET",
+            "endpoint": "http://test.com/missing-cron",
+            "schedule_type": "Recurring",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 400
+
+
+def test_register_job_rejects_unsupported_http_method(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Bad Method",
+            "method": "TRACE",
+            "endpoint": "http://test.com/bad-method",
+            "schedule_type": "One-time",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 422
+
+
+def test_register_job_rejects_missing_endpoint(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Missing Endpoint",
+            "method": "GET",
+            "schedule_type": "One-time",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 422
+
+
 def test_unauthenticated_job_creation_is_rejected(client):
     response = client.post(
         "/api/jobs/",
@@ -570,6 +653,109 @@ def test_job_listing_only_returns_authenticated_users_jobs(client, api_db_sessio
     assert [item["job_id"] for item in response.json()] == [first_job.job_id]
 
 
+def test_get_job_detail_returns_authenticated_users_job(client, api_db_session):
+    job = _create_job(api_db_session, "api_detail_owner")
+
+    response = client.get(
+        f"/api/jobs/{job.job_id}",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == job.job_id
+    assert body["owner_id"] == job.owner_id
+
+
+def test_get_job_detail_rejects_non_owner(client, api_db_session):
+    job = _create_job(api_db_session, "api_detail_owner")
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_detail_other",
+            username="ApiDetailOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.get(
+        f"/api/jobs/{job.job_id}",
+        headers=_auth_headers_for_user(other),
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_job_detail_rejects_deleted_job(client, api_db_session):
+    job = _create_job(api_db_session, "api_detail_deleted")
+    job.status = JobStatus.DELETED
+    api_db_session.commit()
+
+    response = client.get(
+        f"/api/jobs/{job.job_id}",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
+
+    assert response.status_code == 404
+
+
+def test_register_job_rejects_missing_dependency(client, api_db_session):
+    owner = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Missing Dependency",
+            "method": "GET",
+            "endpoint": "http://test.com/missing-dependency",
+            "schedule_type": "One-time",
+            "depends_on": [9999],
+        },
+        headers=_auth_headers_for_user(owner),
+    )
+
+    assert response.status_code == 404
+
+
+def test_register_job_rejects_dependency_owned_by_another_user(
+    client,
+    api_db_session,
+):
+    owner = _create_default_job_owner(api_db_session)
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_dependency_other",
+            username="ApiDependencyOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+    other_job = crud.create_job(
+        db=api_db_session,
+        owner_id=other.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Other Dependency",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/other-dependency",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Cross Owner Dependency",
+            "method": "GET",
+            "endpoint": "http://test.com/cross-owner-dependency",
+            "schedule_type": "One-time",
+            "depends_on": [other_job.job_id],
+        },
+        headers=_auth_headers_for_user(owner),
+    )
+
+    assert response.status_code == 404
+
+
 def test_manual_trigger_rejects_non_owner(client, api_db_session):
     job = _create_job(api_db_session, "api_owner_job")
     other = crud.create_user(
@@ -589,6 +775,30 @@ def test_manual_trigger_rejects_non_owner(client, api_db_session):
     assert response.status_code == 404
 
 
+def test_manual_trigger_rejects_non_existent_job(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/9999/trigger",
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 404
+
+
+def test_manual_trigger_rejects_inactive_job(client, api_db_session):
+    job = _create_job(api_db_session, "api_inactive_job")
+    job.status = JobStatus.DISABLED
+    api_db_session.commit()
+
+    response = client.post(
+        f"/api/jobs/{job.job_id}/trigger",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
+
+    assert response.status_code == 409
+
+
 def test_execution_history_rejects_non_owner(client, api_db_session):
     job = _create_job(api_db_session, "api_history_owner")
     _create_execution(api_db_session, job.job_id)
@@ -603,6 +813,26 @@ def test_execution_history_rejects_non_owner(client, api_db_session):
 
     response = client.get(
         f"/api/jobs/{job.job_id}/executions",
+        headers=_auth_headers_for_user(other),
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_execution_rejects_non_owner(client, api_db_session):
+    job = _create_job(api_db_session, "api_execution_owner")
+    execution = _create_execution(api_db_session, job.job_id)
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_execution_other",
+            username="ApiExecutionOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.get(
+        f"/api/executions/{execution.execution_id}",
         headers=_auth_headers_for_user(other),
     )
 
@@ -724,6 +954,32 @@ def test_get_execution_logs_with_log_reference_returns_metadata(
     assert body["logs"][0]["created_at"] is not None
 
 
+def test_get_execution_logs_rejects_non_owner(client, api_db_session):
+    job = _create_job(api_db_session, "api_log_meta_owner")
+    execution = _create_execution(api_db_session, job.job_id)
+    crud.create_log_reference(
+        db=api_db_session,
+        execution_id=execution.execution_id,
+        log_path="/app/logs/executions/private.log",
+        log_size=256,
+    )
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_log_meta_other",
+            username="ApiLogMetadataOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs",
+        headers=_auth_headers_for_user(other),
+    )
+
+    assert response.status_code == 404
+
+
 def test_get_execution_log_content_returns_plain_text(
     client,
     api_db_session,
@@ -773,6 +1029,42 @@ def test_get_execution_log_content_missing_file_returns_404(
     response = client.get(
         f"/api/executions/{execution.execution_id}/logs/content",
         headers=_auth_headers_for_job(api_db_session, job),
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_execution_log_content_rejects_non_owner(
+    client,
+    api_db_session,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(log_storage, "LOG_ROOT", str(tmp_path))
+    job = _create_job(api_db_session, "api_log_text_owner")
+    execution = _create_execution(api_db_session, job.job_id)
+    log_path, log_size = log_storage.write_execution_log(
+        execution.execution_id,
+        "private worker output",
+    )
+    crud.create_log_reference(
+        db=api_db_session,
+        execution_id=execution.execution_id,
+        log_path=log_path,
+        log_size=log_size,
+    )
+    other = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_log_text_other",
+            username="ApiLogContentOther",
+            role=UserRole.DEVELOPER,
+        ),
+    )
+
+    response = client.get(
+        f"/api/executions/{execution.execution_id}/logs/content",
+        headers=_auth_headers_for_user(other),
     )
 
     assert response.status_code == 404

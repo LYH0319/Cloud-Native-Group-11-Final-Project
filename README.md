@@ -52,6 +52,34 @@
 
 4. local ci test 如果 fail 在 `Test report` 是正常的，可以直接 push。
 
+### backend test
+後端測試已依照測試類型拆成 `unit` 與 `integration`，也可以用 pytest marker 分開執行。
+
+```bash
+cd backend
+
+# 跑全部 backend tests：auth、job、execution、scheduler、worker、CRUD、utils
+pytest
+
+# 只跑 unit tests：單一模組或單一層級邏輯，外部服務以 fixture/mock 隔離
+pytest -m unit
+
+# 只跑 integration tests：API + DB、scheduler + dispatch、worker + execution flow
+pytest -m integration
+
+# 排除 integration tests：快速檢查大多數純邏輯與資料層測試
+pytest -m "not integration"
+
+# 直接指定 unit 測試資料夾：等同集中跑單元測試檔
+pytest tests/unit
+
+# 直接指定 integration 測試資料夾：等同集中跑整合流程測試檔
+pytest tests/integration
+
+# CI 使用的語法級 flake8 檢查：只檢查會造成執行失敗的錯誤類型
+python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+
 ## 🛠️ database CRUD 使用指南
 
 目前已完成 User、Job、Execution、JobDependency、LogReference 相關 CRUD 功能。
@@ -150,17 +178,24 @@ Cloud-Native-Group-11-Final-Project/
     │       └── security.py          # 密碼雜湊、JWT 建立與驗證
     │
     └── tests/
-        ├── api/
-        │   └── test_api.py          # Auth、Job API、Manual trigger、History、Logs 測試
-        ├── database/
-        │   └── test_crud.py         # CRUD 與排程時間計算測試
-        ├── scheduler/
-        │   └── test_scheduler.py    # Scheduler 派發與相依性邏輯測試
-        ├── worker/
-        │   ├── test_dispatch.py
-        │   └── test_executor.py
-        └── utils/
-            └── test_logger.py
+        ├── conftest.py              # 共用 pytest fixtures，建立隔離測試 DB session
+        ├── unit/                    # 單一模組或單一層級測試
+        │   ├── test_auth_dependencies.py # JWT current user dependency 與無效 token/停用使用者
+        │   ├── test_cycle_detection.py   # Job dependency DAG cycle detection
+        │   ├── test_database_crud.py     # User/job/execution/dependency/log CRUD 與 business helpers
+        │   ├── test_database_schemas.py  # Pydantic schema validation edge cases
+        │   ├── test_dummy.py             # CI smoke test
+        │   ├── test_http_task.py         # HTTP task success/failure/timeout/request payload
+        │   ├── test_security.py          # Password hash/verify 與 JWT 建立/解碼/失效
+        │   ├── test_shell_task.py        # Shell task 回傳格式
+        │   ├── test_utils_logger.py      # Execution log 寫入/讀取/路徑保護
+        │   └── test_worker_schemas.py    # Worker TaskPayload/HeartbeatState schema validation
+        ├── integration/             # 跨 API / DB / scheduler / worker 流程測試
+        │   ├── test_api.py                  # Auth、job ownership、manual trigger、history、logs API
+        │   ├── test_scheduler_flow.py       # Scheduler 掃描 job、dependency、dispatch、rollback
+        │   └── test_worker_executor_flow.py # Worker 執行任務、回寫結果、log reference、防重與壞 payload
+        └── helpers/
+            └── manual_redis_dispatch.py # 手動送 Redis 測試任務的開發輔助腳本
 ```
 
 ## 🚀 本地開啟後端與模擬前端
