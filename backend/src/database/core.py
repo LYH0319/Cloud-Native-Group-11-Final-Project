@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, MappedAsDataclass
 from dotenv import load_dotenv, find_dotenv
 
@@ -34,6 +34,7 @@ def get_db():
 
 def init_db():
     Base.metadata.create_all(engine)
+    ensure_schema_compatibility(engine)
     print("Initialized database tables!")
 
     from sqlalchemy import select
@@ -62,3 +63,35 @@ def init_db():
         db.rollback()
     finally:
         db.close()
+
+
+def ensure_schema_compatibility(bind_engine=None) -> None:
+    """
+    Apply tiny compatibility fixes for local databases created before auth fields.
+
+    This project does not currently use Alembic. create_all() creates missing tables,
+    but it does not add columns to tables that already exist in a Docker volume.
+    """
+    target_engine = bind_engine or engine
+    inspector = inspect(target_engine)
+
+    if not inspector.has_table("users"):
+        return
+
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("users")
+    }
+    statements = []
+    if "email" not in existing_columns:
+        statements.append("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL")
+    if "hashed_password" not in existing_columns:
+        statements.append(
+            "ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255) NULL"
+        )
+
+    if not statements:
+        return
+
+    with target_engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
