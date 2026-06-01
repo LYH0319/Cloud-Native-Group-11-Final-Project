@@ -146,6 +146,7 @@ def report_to_database(
     error_message: str | None = None,
     log_path: str | None = None,
     log_size: int | None = None,
+    db: Session | None = None,
 ):
     """
     呼叫 沅籈 寫好的 update_execution_status 函式。
@@ -156,9 +157,12 @@ def report_to_database(
     logger.info(
         f"[DB Sync] 正在同步狀態至資料庫 - Execution ID: {execution_id}, 狀態: {status.name}"
     )
+    
+    is_local_session = False
+    if db is None:
+        db  = SessionLocal()
+        is_local_session = True
 
-    # 建立資料庫連線 Session
-    db: Session = SessionLocal()
     try:
         worker_id = "group11_worker_container_node"
         if log_path is not None:
@@ -192,7 +196,8 @@ def report_to_database(
         # NFR: 可靠性 (Reliability) - 捕捉資料庫異常，避免 Worker 核心迴圈因為 DB 波動而集體死機
         logger.error(f"[DB Sync 異常] 寫入 MySQL 失敗: {str(e)}")
     finally:
-        db.close()  # 務必關閉 Session，釋放連線池資源
+        if is_local_session:
+            db.close()  # 務必關閉 Session，釋放連線池資源
 
 
 # ==========================================
@@ -227,26 +232,32 @@ def dispatch_task(execution_id: int, job_dict: dict):
 # ==========================================
 #          任務核心分流與處理
 # ==========================================
-def process_task(task: TaskPayload, r_client: redis.Redis):
+def process_task(task: TaskPayload, r_client: redis.Redis, db: Session | None=None):
     """處理單個任務的核心生命週期管理"""
     logger.info(
         f"從佇列中取得任務，準備執行 - Execution ID: {task.execution_id}, Job ID: {task.job_id}"
     )
-
+    
     # -------------------------------------------------------------
     # NFR 注意：一致性與冪等性 (Consistency / Idempotency)
     # 為了防止高流量下手動觸發因網路重試、或是 Scheduler 重複派發，我們在此實作分散式防重鎖
     # -------------------------------------------------------------
     idempotency_key = f"exec_active:{task.execution_id}"
     # setnx (Set if Not Exists) 確保同一個 execution_id 同一時間絕對不會被兩個 Worker 重複執行
-    if not r_client.set(idempotency_key, "RUNNING", ex=task.timeout_threshold + 60):
+    if not r_client.set(idempotency_key, "RUNNING", ex=task.timeout_threshold + 60, nx=True):
         logger.warning(
             f"[IDEMPOTENCY] 偵測到重複派發請求！Execution ID {task.execution_id} 正在執行中，自動丟棄此重複任務。"
         )
+        if db is not None:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
         return
 
+
     # 1. 任務啟動：向 MySQL 回報狀態為 RUNNING (啟動計時)
-    report_to_database(execution_id=task.execution_id, status=ExecutionStatus.RUNNING)
+    report_to_database(execution_id=task.execution_id, status=ExecutionStatus.RUNNING, db=db)
 
     # 2. 啟動背景心跳監控線程
     hb_thread = HeartbeatThread(r_client, task)
@@ -272,20 +283,28 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             "Failed": ExecutionStatus.FAILED,
             "Timeout": ExecutionStatus.TIMEOUT,
         }
-        final_status = status_map.get(result["status"], ExecutionStatus.FAILED)
-        error_msg = result["error_message"]
+        final_status = status_map.get(result.get("status"), ExecutionStatus.FAILED)
+        error_msg = result.get("error_message")
         if "log" in result and result["log"] is not None:
-            log_path, log_size = write_execution_log(task.execution_id, result["log"])
+            try:
+                log_path, log_size = write_execution_log(task.execution_id, result["log"])
+            except Exception as e:
+                logger.warning(f"日誌寫入失敗: {str(e)}")
 
+    except AssertionError:
+        raise
     except Exception as e:
         logger.error(f"任務執行層發生未預期系統崩潰: {str(e)}")
         error_msg = f"Worker Inner Crash: {str(e)}"
         final_status = ExecutionStatus.FAILED
     finally:
         # 5. 任務不論成功、失敗或拋出異常，必須立刻通知並關閉背景心跳線程
-        hb_thread.stop()
-        hb_thread.join()  # 等待心跳線程安全安全退場
-
+        try:
+            hb_thread.stop()
+            hb_thread.join(timeout=2)  # 等待心跳線程安全安全退場
+        except Exception as e:
+            logger.warning(f"心跳執行緒異常關閉: {str(e)}")
+            
         # 6. 清理快取：移除暫存的防重鎖與心跳紀錄，維持快取空間乾淨
         r_client.delete(idempotency_key)
         r_client.delete(f"heartbeat:exec_{task.execution_id}")
@@ -297,7 +316,14 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             error_message=error_msg,
             log_path=log_path,
             log_size=log_size,
+            db=db
         )
+        
+        if db is not None:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
         logger.info(f"任務處理完成，已釋放資源 - Execution ID: {task.execution_id}")
 
 
