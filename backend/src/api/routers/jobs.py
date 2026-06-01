@@ -1,87 +1,65 @@
-from typing import List, Optional
-
-from croniter import croniter
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, model_validator
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
+from src.api.dependencies import get_current_user
 from src.database.core import get_db
-from src.database.models import (
-    HttpMethod,
-    Job,
-    JobDependency,
-    JobStatus,
-    ScheduleType,
-    TriggerType,
-    UserRole,
-)
+from src.database.models import JobStatus, TriggerType, User
 from src.utils.cycle_detection import has_cycle
 from src.worker.executor import dispatch_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
-DEFAULT_OWNER_EMPLOYEE_ID = "demo_owner"
 
 
-class JobCreateRequest(BaseModel):
-    job_name: str
-    method: HttpMethod
-    endpoint: str
-    schedule_type: ScheduleType
-    headers: Optional[dict] = None
-    body: Optional[dict] = None
-    cron_expression: Optional[str] = None
-    depends_on: Optional[List[int]] = None
-
-    @model_validator(mode="after")
-    def validate_schedule(self):
-        if self.schedule_type == ScheduleType.RECURRING:
-            if not self.cron_expression:
-                raise ValueError("cron_expression is required for recurring jobs")
-            if not croniter.is_valid(self.cron_expression):
-                raise ValueError("Invalid cron_expression")
-        return self
+@router.get("/", response_model=list[schemas.JobResponse])
+def list_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List jobs owned by the authenticated user."""
+    return crud.get_jobs_by_owner_id(db=db, owner_id=current_user.user_id)
 
 
-def fetch_dependency_graph_from_db(db: Session) -> dict[int, list[int]]:
-    """Read active job dependency edges as an adjacency list."""
-    graph: dict[int, list[int]] = {}
-    stm = (
-        select(JobDependency)
-        .join(Job, JobDependency.downstream_id == Job.job_id)
-        .where(Job.status == JobStatus.ACTIVE)
-    )
-    dependencies = db.scalars(stm).all()
-    for dep in dependencies:
-        graph.setdefault(dep.downstream_id, []).append(dep.upstream_id)
-    return graph
-
-
-def get_or_create_default_owner(db: Session):
-    """Temporary owner strategy until authentication is implemented."""
-    owner = crud.get_user_by_employee_id(db=db, employee_id=DEFAULT_OWNER_EMPLOYEE_ID)
-    if owner is not None:
-        return owner
-
-    return crud.create_user(
-        db=db,
-        user_in=schemas.UserCreate(
-            employee_id=DEFAULT_OWNER_EMPLOYEE_ID,
-            username="Demo Owner",
-            role=UserRole.DEVELOPER,
-        ),
-    )
+@router.get("/{job_id}", response_model=schemas.JobResponse)
+def get_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return one job if it belongs to the authenticated user."""
+    job = crud.get_job_by_id(db=db, job_id=job_id)
+    if job is None or job.status == JobStatus.DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    if job.owner_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    return job
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
-    current_owner = get_or_create_default_owner(db)
+def register_job(
+    payload: schemas.JobCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     depends_on = payload.depends_on or []
 
     if depends_on:
-        current_graph = fetch_dependency_graph_from_db(db)
+        for upstream_id in depends_on:
+            upstream = crud.get_job_by_id(db=db, job_id=upstream_id)
+            if upstream is None or upstream.owner_id != current_user.user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Dependency job not found",
+                )
+
+        current_graph = crud.get_active_dependency_graph(db)
         current_graph[0] = depends_on
         if has_cycle(0, current_graph):
             raise HTTPException(
@@ -92,7 +70,7 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
     try:
         new_job = crud.create_job(
             db=db,
-            owner_id=current_owner.user_id,
+            owner_id=current_user.user_id,
             job_in=payload,
             initialize_next_run_time=True,
         )
@@ -102,16 +80,12 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
             detail=str(error),
         ) from error
 
-    for upstream_id in depends_on:
-        crud.create_job_dependency(
-            db=db,
-            dependency_in=schemas.JobDependencyCreate(
-                upstream_id=upstream_id,
-                downstream_id=new_job.job_id,
-            ),
-        )
-
     if depends_on:
+        crud.create_job_dependencies(
+            db=db,
+            downstream_id=new_job.job_id,
+            upstream_ids=depends_on,
+        )
         new_job.has_dependency = True
         db.commit()
         db.refresh(new_job)
@@ -131,10 +105,16 @@ def register_job(payload: JobCreateRequest, db: Session = Depends(get_db)):
 def manually_trigger_job(
     job_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """Create a manual execution and enqueue it for the worker."""
+    """Create a manual execution and enqueue it for worker execution."""
     job = crud.get_job_by_id(db=db, job_id=job_id)
     if job is None or job.status == JobStatus.DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    if job.owner_id != current_user.user_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
@@ -152,7 +132,7 @@ def manually_trigger_job(
     )
     dispatch_info = dispatch_task(
         execution_id=execution.execution_id,
-        job_dict=crud.job_to_task_dict(job),
+        job_dict=crud.job_to_task_dict(job, timeout=60),
     )
 
     return {

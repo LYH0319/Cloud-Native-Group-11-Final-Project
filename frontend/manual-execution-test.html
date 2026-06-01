@@ -1,0 +1,831 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>後端任務流程手動測試台</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6f8;
+        --surface: #ffffff;
+        --surface-soft: #edf2f7;
+        --text: #17202a;
+        --muted: #667789;
+        --border: #d8e0e8;
+        --primary: #1267a8;
+        --primary-dark: #0c4f82;
+        --success: #177245;
+        --warning: #9a5a00;
+        --danger: #b3261e;
+        --code-bg: #111827;
+        --code-text: #e5e7eb;
+        --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      header {
+        padding: 18px 24px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      h2 {
+        font-size: 18px;
+      }
+
+      h3 {
+        font-size: 15px;
+      }
+
+      p,
+      .hint {
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      main {
+        width: min(1440px, 100%);
+        margin: 0 auto;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 430px minmax(0, 1fr);
+        gap: 18px;
+      }
+
+      section,
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      section {
+        padding: 16px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 9px 10px;
+        background: #fff;
+        color: var(--text);
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 88px;
+        resize: vertical;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      button {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 9px 12px;
+        background: var(--surface-soft);
+        color: var(--text);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--primary);
+        color: #fff;
+      }
+
+      button.primary:hover {
+        background: var(--primary-dark);
+      }
+
+      button.danger {
+        color: var(--danger);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .status-line {
+        min-height: 42px;
+        padding: 10px 12px;
+        border-radius: 6px;
+        background: var(--surface-soft);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .status-line.ok {
+        color: var(--success);
+      }
+
+      .status-line.err {
+        color: var(--danger);
+      }
+
+      .panel {
+        padding: 12px;
+        overflow: auto;
+      }
+
+      .result {
+        min-height: 360px;
+        max-height: 680px;
+        overflow: auto;
+        margin: 0;
+        padding: 14px;
+        border-radius: 8px;
+        background: var(--code-bg);
+        color: var(--code-text);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-weight: 800;
+        background: #fafbfc;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--surface-soft);
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      .badge.success {
+        color: var(--success);
+      }
+
+      .badge.pending,
+      .badge.running {
+        color: var(--warning);
+      }
+
+      .badge.failed,
+      .badge.timeout {
+        color: var(--danger);
+      }
+
+      .top-row {
+        display: flex;
+        gap: 10px;
+        align-items: start;
+        justify-content: space-between;
+      }
+
+      .token {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--mono);
+      }
+
+      @media (max-width: 980px) {
+        main,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>後端任務流程手動測試台</h1>
+      <p>這是測試用單頁前端，用來驗證註冊、登入、建立任務、手動觸發、查詢 execution 與讀取 logs。</p>
+    </header>
+
+    <main>
+      <div class="stack">
+        <section class="stack">
+          <div>
+            <h2>連線與登入狀態</h2>
+            <p>登入後會把 JWT 存在本頁 localStorage，後續 jobs / executions API 會自動帶 Bearer token。</p>
+          </div>
+          <label>
+            API 根路徑
+            <input id="apiBase" value="http://localhost:8000/api" />
+          </label>
+          <div class="actions">
+            <button id="healthBtn" type="button">檢查後端</button>
+            <button id="clearBtn" class="danger" type="button">清除本頁狀態</button>
+          </div>
+          <div id="statusLine" class="status-line">尚未連線。</div>
+          <div class="panel">
+            <div class="hint">目前 token</div>
+            <div id="tokenText" class="token">未登入</div>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div class="top-row">
+            <div>
+              <h2>註冊 / 登入</h2>
+              <p>後端現在需要登入才能建立與管理自己的 job。</p>
+            </div>
+            <button id="logoutBtn" type="button">登出</button>
+          </div>
+          <div class="grid">
+            <label>
+              員工 ID
+              <input id="employeeId" value="manual_user_1" />
+            </label>
+            <label>
+              使用者名稱
+              <input id="username" value="ManualTester" />
+            </label>
+          </div>
+          <label>
+            Email
+            <input id="email" type="email" value="manual@example.com" />
+          </label>
+          <label>
+            密碼
+            <input id="password" type="password" value="secret123" />
+          </label>
+          <div class="actions">
+            <button id="registerBtn" type="button">註冊</button>
+            <button id="loginBtn" class="primary" type="button">登入</button>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>建立任務</h2>
+            <p>One-time 會計算 next_run_time；Recurring 會檢查 cron。Docker worker 內部可用 backend hostname。</p>
+          </div>
+          <label>
+            任務名稱
+            <input id="jobName" value="測試 HTTP 任務" maxlength="30" />
+          </label>
+          <div class="grid">
+            <label>
+              HTTP 方法
+              <select id="method">
+                <option>GET</option>
+                <option>POST</option>
+                <option>PUT</option>
+                <option>PATCH</option>
+                <option>DELETE</option>
+              </select>
+            </label>
+            <label>
+              排程類型
+              <select id="scheduleType">
+                <option value="One-time">單次</option>
+                <option value="Recurring">週期</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            目標 endpoint
+            <input id="endpoint" value="http://backend:8000/api/health" />
+          </label>
+          <label>
+            Cron 表達式
+            <input id="cronExpression" value="*/5 * * * *" />
+          </label>
+          <label>
+            Headers JSON
+            <textarea id="headersJson">{}</textarea>
+          </label>
+          <label>
+            Body JSON
+            <textarea id="bodyJson">{}</textarea>
+          </label>
+          <div class="actions">
+            <button id="createJobBtn" class="primary" type="button">建立任務</button>
+            <button id="listJobsBtn" type="button">列出我的任務</button>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>手動操作</h2>
+            <p>手動觸發會建立 Pending execution 並送進 Redis queue。</p>
+          </div>
+          <label>
+            Job ID
+            <input id="jobId" type="number" min="1" />
+          </label>
+          <div class="actions">
+            <button id="loadJobBtn" type="button">讀取 job</button>
+            <button id="triggerBtn" class="primary" type="button">手動觸發</button>
+            <button id="historyBtn" type="button">查詢執行紀錄</button>
+          </div>
+          <label>
+            Execution ID
+            <input id="executionId" type="number" min="1" />
+          </label>
+          <div class="actions">
+            <button id="executionBtn" type="button">查詢 execution</button>
+            <button id="logsBtn" type="button">查詢 log metadata</button>
+            <button id="logContentBtn" type="button">讀取 log 內容</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="stack">
+        <section class="stack">
+          <div class="top-row">
+            <div>
+              <h2>我的任務</h2>
+              <p>資料來自 <code>GET /api/jobs/</code>，只會顯示目前登入使用者擁有的任務。</p>
+            </div>
+            <button id="refreshJobsBtn" type="button">重新整理</button>
+          </div>
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job ID</th>
+                  <th>名稱</th>
+                  <th>類型</th>
+                  <th>狀態</th>
+                  <th>下次執行</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="jobsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>執行紀錄</h2>
+            <p>手動觸發後可刷新 execution，確認 worker 是否回報 Running / Success / Failed / Timeout。</p>
+          </div>
+          <div class="panel">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Job</th>
+                  <th>觸發</th>
+                  <th>狀態</th>
+                  <th>Worker</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="executionsBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="stack">
+          <div>
+            <h2>最近一次回應</h2>
+            <p>完整 response 會顯示在這裡，方便比對 schema 與錯誤訊息。</p>
+          </div>
+          <pre id="result" class="result">尚無資料。</pre>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const stateKey = "group11-manual-execution-test";
+      const state = loadState();
+      const $ = (id) => document.getElementById(id);
+
+      const labels = {
+        Pending: "等待中",
+        Running: "執行中",
+        Success: "成功",
+        Failed: "失敗",
+        Timeout: "逾時",
+        Cancelled: "已取消",
+        Manual: "手動",
+        Scheduler: "排程",
+        "One-time": "單次",
+        Recurring: "週期",
+        Active: "啟用",
+        Deleted: "已刪除",
+      };
+
+      function loadState() {
+        try {
+          return (
+            JSON.parse(localStorage.getItem(stateKey)) || {
+              token: "",
+              jobs: [],
+              executions: [],
+            }
+          );
+        } catch {
+          return { token: "", jobs: [], executions: [] };
+        }
+      }
+
+      function saveState() {
+        localStorage.setItem(stateKey, JSON.stringify(state));
+      }
+
+      function apiBase() {
+        return $("apiBase").value.replace(/\/$/, "");
+      }
+
+      function authHeaders() {
+        return state.token ? { Authorization: `Bearer ${state.token}` } : {};
+      }
+
+      function setStatus(message, type = "") {
+        $("statusLine").textContent = message;
+        $("statusLine").className = `status-line ${type}`;
+      }
+
+      function showResult(data) {
+        $("result").textContent =
+          typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      }
+
+      function renderAuth() {
+        $("tokenText").textContent = state.token ? state.token : "未登入";
+      }
+
+      function parseJson(id) {
+        const raw = $(id).value.trim();
+        return raw ? JSON.parse(raw) : {};
+      }
+
+      async function apiRequest(path, options = {}) {
+        const response = await fetch(`${apiBase()}${path}`, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(),
+            ...(options.headers || {}),
+          },
+        });
+        const contentType = response.headers.get("content-type") || "";
+        const data = contentType.includes("application/json")
+          ? await response.json()
+          : await response.text();
+        if (!response.ok) {
+          const detail =
+            typeof data === "object" ? data.detail || JSON.stringify(data) : data;
+          throw new Error(`HTTP ${response.status}: ${detail}`);
+        }
+        return data;
+      }
+
+      async function checkHealth() {
+        const data = await apiRequest("/health");
+        setStatus(`後端連線正常：${data.status}`, "ok");
+        showResult(data);
+      }
+
+      async function registerUser() {
+        const data = await apiRequest("/auth/register", {
+          method: "POST",
+          body: JSON.stringify({
+            employee_id: $("employeeId").value.trim(),
+            username: $("username").value.trim(),
+            email: $("email").value.trim(),
+            password: $("password").value,
+          }),
+        });
+        setStatus(`註冊成功：${data.username}`, "ok");
+        showResult(data);
+      }
+
+      async function loginUser() {
+        const data = await apiRequest("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            identifier: $("email").value.trim(),
+            password: $("password").value,
+          }),
+        });
+        state.token = data.access_token;
+        saveState();
+        renderAuth();
+        setStatus(`登入成功：${data.user.username}`, "ok");
+        showResult(data);
+        await listJobs();
+      }
+
+      function logoutUser() {
+        state.token = "";
+        saveState();
+        renderAuth();
+        setStatus("已登出，本頁不會再自動帶 Authorization header。");
+      }
+
+      async function createJob() {
+        const scheduleType = $("scheduleType").value;
+        const payload = {
+          job_name: $("jobName").value.trim(),
+          method: $("method").value,
+          endpoint: $("endpoint").value.trim(),
+          schedule_type: scheduleType,
+          headers: parseJson("headersJson"),
+          body: parseJson("bodyJson"),
+        };
+        if (scheduleType === "Recurring") {
+          payload.cron_expression = $("cronExpression").value.trim();
+        }
+
+        const data = await apiRequest("/jobs/", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        $("jobId").value = data.job_id;
+        rememberJob({
+          ...payload,
+          job_id: data.job_id,
+          next_run_time: data.next_run_time,
+          status: "Active",
+        });
+        setStatus(`任務已建立：Job ID ${data.job_id}`, "ok");
+        showResult(data);
+      }
+
+      async function listJobs() {
+        const data = await apiRequest("/jobs/");
+        state.jobs = data;
+        saveState();
+        renderJobs();
+        setStatus(`已載入 ${data.length} 個目前使用者的任務`, "ok");
+        showResult(data);
+      }
+
+      async function loadJob(jobId = numberValue("jobId", "請先輸入 Job ID")) {
+        const data = await apiRequest(`/jobs/${jobId}`);
+        $("jobId").value = data.job_id;
+        rememberJob(data);
+        setStatus(`已讀取 Job ${jobId}`, "ok");
+        showResult(data);
+      }
+
+      async function triggerJob(jobId = numberValue("jobId", "請先輸入 Job ID")) {
+        const data = await apiRequest(`/jobs/${jobId}/trigger`, { method: "POST" });
+        $("executionId").value = data.execution.execution_id;
+        rememberExecution(data.execution);
+        setStatus(
+          `已排入 ${data.dispatch.queue_name}，Execution ID ${data.execution.execution_id}`,
+          "ok",
+        );
+        showResult(data);
+      }
+
+      async function loadHistory(jobId = numberValue("jobId", "請先輸入 Job ID")) {
+        const data = await apiRequest(`/jobs/${jobId}/executions?limit=20`);
+        state.executions = mergeById(
+          state.executions,
+          data.items,
+          "execution_id",
+        );
+        saveState();
+        renderExecutions();
+        setStatus(`已載入 Job ${jobId} 的 ${data.count} 筆執行紀錄`, "ok");
+        showResult(data);
+      }
+
+      async function loadExecution(
+        executionId = numberValue("executionId", "請先輸入 Execution ID"),
+      ) {
+        const data = await apiRequest(`/executions/${executionId}`);
+        rememberExecution(data);
+        setStatus(`已更新 Execution ${executionId}`, "ok");
+        showResult(data);
+      }
+
+      async function loadLogs() {
+        const executionId = numberValue("executionId", "請先輸入 Execution ID");
+        const data = await apiRequest(`/executions/${executionId}/logs`);
+        setStatus(`已查詢 Execution ${executionId} 的 log metadata`, "ok");
+        showResult(data);
+      }
+
+      async function loadLogContent() {
+        const executionId = numberValue("executionId", "請先輸入 Execution ID");
+        const data = await apiRequest(`/executions/${executionId}/logs/content`);
+        setStatus(`已讀取 Execution ${executionId} 的 log 內容`, "ok");
+        showResult(data);
+      }
+
+      function rememberJob(job) {
+        state.jobs = mergeById(state.jobs, [job], "job_id");
+        saveState();
+        renderJobs();
+      }
+
+      function rememberExecution(execution) {
+        state.executions = mergeById(
+          state.executions,
+          [execution],
+          "execution_id",
+        );
+        saveState();
+        renderExecutions();
+      }
+
+      function mergeById(current, incoming, idKey) {
+        const map = new Map(current.map((item) => [item[idKey], item]));
+        incoming.forEach((item) => {
+          map.set(item[idKey], { ...(map.get(item[idKey]) || {}), ...item });
+        });
+        return [...map.values()].sort((a, b) => Number(b[idKey]) - Number(a[idKey]));
+      }
+
+      function renderJobs() {
+        $("jobsBody").innerHTML =
+          state.jobs
+            .map(
+              (job) => `
+                <tr>
+                  <td>${job.job_id}</td>
+                  <td>${escapeHtml(job.job_name || "-")}</td>
+                  <td>${labels[job.schedule_type] || job.schedule_type || "-"}</td>
+                  <td><span class="badge ${String(job.status || "").toLowerCase()}">${labels[job.status] || job.status || "-"}</span></td>
+                  <td>${formatDate(job.next_run_time)}</td>
+                  <td>
+                    <button type="button" data-job="${job.job_id}" data-action="use-job">帶入</button>
+                    <button type="button" data-job="${job.job_id}" data-action="trigger-job">觸發</button>
+                    <button type="button" data-job="${job.job_id}" data-action="history-job">紀錄</button>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("") || `<tr><td colspan="6">尚無任務。請先登入後建立或重新整理。</td></tr>`;
+      }
+
+      function renderExecutions() {
+        $("executionsBody").innerHTML =
+          state.executions
+            .map(
+              (execution) => `
+                <tr>
+                  <td>${execution.execution_id}</td>
+                  <td>${execution.job_id}</td>
+                  <td>${labels[execution.trigger_type] || execution.trigger_type || "-"}</td>
+                  <td><span class="badge ${String(execution.status || "").toLowerCase()}">${labels[execution.status] || execution.status || "-"}</span></td>
+                  <td>${escapeHtml(execution.worker_id || "-")}</td>
+                  <td>
+                    <button type="button" data-execution="${execution.execution_id}" data-action="use-execution">帶入</button>
+                    <button type="button" data-execution="${execution.execution_id}" data-action="refresh-execution">刷新</button>
+                    <button type="button" data-execution="${execution.execution_id}" data-action="logs-execution">Logs</button>
+                  </td>
+                </tr>
+              `,
+            )
+            .join("") || `<tr><td colspan="6">尚無 execution。</td></tr>`;
+      }
+
+      function numberValue(id, errorMessage) {
+        const value = Number($(id).value);
+        if (!value) throw new Error(errorMessage);
+        return value;
+      }
+
+      function formatDate(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime())
+          ? value
+          : date.toLocaleString("zh-TW", { hour12: false });
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function run(handler) {
+        return async () => {
+          try {
+            setStatus("請求處理中...");
+            await handler();
+          } catch (error) {
+            setStatus(error.message || String(error), "err");
+            showResult({ error: error.message || String(error) });
+          }
+        };
+      }
+
+      $("healthBtn").addEventListener("click", run(checkHealth));
+      $("registerBtn").addEventListener("click", run(registerUser));
+      $("loginBtn").addEventListener("click", run(loginUser));
+      $("logoutBtn").addEventListener("click", logoutUser);
+      $("createJobBtn").addEventListener("click", run(createJob));
+      $("listJobsBtn").addEventListener("click", run(listJobs));
+      $("refreshJobsBtn").addEventListener("click", run(listJobs));
+      $("loadJobBtn").addEventListener("click", run(() => loadJob()));
+      $("triggerBtn").addEventListener("click", run(() => triggerJob()));
+      $("historyBtn").addEventListener("click", run(() => loadHistory()));
+      $("executionBtn").addEventListener("click", run(() => loadExecution()));
+      $("logsBtn").addEventListener("click", run(loadLogs));
+      $("logContentBtn").addEventListener("click", run(loadLogContent));
+      $("clearBtn").addEventListener("click", () => {
+        state.token = "";
+        state.jobs = [];
+        state.executions = [];
+        saveState();
+        renderAuth();
+        renderJobs();
+        renderExecutions();
+        setStatus("已清除本頁 localStorage 狀態。");
+        showResult("尚無資料。");
+      });
+
+      document.body.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) return;
+
+        const jobId = Number(target.dataset.job);
+        const executionId = Number(target.dataset.execution);
+        if (target.dataset.action === "use-job") $("jobId").value = jobId;
+        if (target.dataset.action === "trigger-job") run(() => triggerJob(jobId))();
+        if (target.dataset.action === "history-job") run(() => loadHistory(jobId))();
+        if (target.dataset.action === "use-execution") $("executionId").value = executionId;
+        if (target.dataset.action === "refresh-execution") {
+          run(() => loadExecution(executionId))();
+        }
+        if (target.dataset.action === "logs-execution") {
+          $("executionId").value = executionId;
+          run(loadLogs)();
+        }
+      });
+
+      renderAuth();
+      renderJobs();
+      renderExecutions();
+    </script>
+  </body>
+</html>
