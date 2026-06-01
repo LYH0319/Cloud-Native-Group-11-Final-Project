@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
-from config.setting import settings
 from src.api.dependencies import get_current_user
 from src.database.core import get_db
 from src.database.models import JobStatus, TriggerType, User
@@ -68,7 +67,18 @@ def register_job(
                 detail="Cannot register job: dependency cycle detected.",
             )
 
-    new_job = crud.create_job(db=db, owner_id=current_user.user_id, job_in=payload)
+    try:
+        new_job = crud.create_job(
+            db=db,
+            owner_id=current_user.user_id,
+            job_in=payload,
+            initialize_next_run_time=True,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
 
     if depends_on:
         crud.create_job_dependencies(
@@ -80,7 +90,11 @@ def register_job(
         db.commit()
         db.refresh(new_job)
 
-    return {"message": "Job registered successfully", "job_id": new_job.job_id}
+    return {
+        "message": "Job registered successfully",
+        "job_id": new_job.job_id,
+        "next_run_time": new_job.next_run_time,
+    }
 
 
 @router.post(
@@ -116,28 +130,17 @@ def manually_trigger_job(
         job_id=job_id,
         trigger_type=TriggerType.MANUAL,
     )
-    task_payload_dict = {
-        "job_id": job.job_id,
-        "method": job.method.value,
-        "endpoint": job.endpoint,
-        "headers": job.headers or {},
-        "body": job.body or {},
-        "timeout": 60,
-    }
-    dispatch_task(execution_id=execution.execution_id, job_dict=task_payload_dict)
+    dispatch_info = dispatch_task(
+        execution_id=execution.execution_id,
+        job_dict=crud.job_to_task_dict(job, timeout=60),
+    )
 
     return {
         "execution": execution,
         "dispatch": {
             "queued": True,
-            "queue_name": settings.JOB_QUEUE_NAME,
-            "reason": "Successfully dispatched to Redis distributed queue.",
-            "task_payload": {
-                "execution_id": execution.execution_id,
-                "job_id": job.job_id,
-                "task_type": "http",
-                "payload": task_payload_dict,
-                "timeout_threshold": 60,
-            },
+            "queue_name": dispatch_info["queue_name"],
+            "reason": "Task queued for worker execution.",
+            "task_payload": dispatch_info["task_payload"],
         },
     }

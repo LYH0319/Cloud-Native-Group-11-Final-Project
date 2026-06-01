@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, desc, select, func
+from croniter import croniter
+from croniter.croniter import CroniterBadCronError
 from src.database.models import (
     User,
     UserRole,
@@ -17,6 +19,55 @@ from datetime import datetime, timezone, timedelta
 from src.database import schemas
 from src.utils.logger import validate_log_path, validate_log_size
 from src.utils.security import hash_password, verify_password
+
+
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+    return datetime.now(timezone.utc)
+
+
+def compute_initial_next_run_time(
+    job_in: schemas.JobCreate,
+    base_time: datetime | None = None,
+) -> datetime | None:
+    """Compute the first scheduler pickup time for a new job."""
+    base = base_time or utc_now()
+    if job_in.schedule_type == ScheduleType.ONE_TIME:
+        return base
+
+    if job_in.schedule_type == ScheduleType.RECURRING:
+        if not job_in.cron_expression:
+            raise ValueError("cron_expression is required for recurring jobs")
+        if not croniter.is_valid(job_in.cron_expression):
+            raise ValueError("Invalid cron_expression")
+        return croniter(job_in.cron_expression, base).get_next(datetime)
+
+    return None
+
+
+def compute_next_recurring_run_time(
+    cron_expression: str | None,
+    base_time: datetime | None = None,
+) -> datetime | None:
+    """Compute the next recurring run time, returning None for invalid schedules."""
+    if not cron_expression:
+        return None
+    try:
+        return croniter(cron_expression, base_time or utc_now()).get_next(datetime)
+    except (CroniterBadCronError, ValueError):
+        return None
+
+
+def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
+    """Serialize a Job into the worker task payload shape."""
+    return {
+        "job_id": job.job_id,
+        "method": job.method.value,
+        "endpoint": job.endpoint,
+        "headers": job.headers or {},
+        "body": job.body or {},
+        "timeout": timeout,
+    }
 
 # ==========================================
 #                  USER CRUD
@@ -181,6 +232,7 @@ def create_job(
     owner_id: int,
     job_in: schemas.JobCreate,
     next_run_time: datetime | None = None,
+    initialize_next_run_time: bool = False,
 ) -> Job:
     """
     Creates a new HTTP request job in the database.
@@ -200,6 +252,8 @@ def create_job(
         Job: The newly created job object.
     """
     depends_on = getattr(job_in, "depends_on", None) or []
+    if initialize_next_run_time and next_run_time is None:
+        next_run_time = compute_initial_next_run_time(job_in)
 
     new_job = Job(
         owner_id=owner_id,

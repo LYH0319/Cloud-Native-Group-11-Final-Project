@@ -64,6 +64,7 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     queue_name = settings.JOB_QUEUE_NAME
     r_client.rpush(queue_name, message_body)
     print(f" [Redis Push] 成功將Execution ID {execution_id} 派發至queue [{queue_name}]")
+    return {"queued": True, "queue_name": queue_name, "task_payload": task_payload}
 
 
 def get_redis_client():
@@ -244,7 +245,7 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             "Timeout": ExecutionStatus.TIMEOUT,
         }
         final_status = status_map.get(result["status"], ExecutionStatus.FAILED)
-        error_msg = result["error_message"]
+        error_msg = result.get("error_message")
         if "log" in result and result["log"] is not None:
             log_path, log_size = write_execution_log(task.execution_id, result["log"])
 

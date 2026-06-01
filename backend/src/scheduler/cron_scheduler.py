@@ -10,7 +10,6 @@ from src.database.core import SessionLocal
 
 # 2. 引入models.py的模型
 from src.database.models import (
-    Job,
     JobDependency,
     Execution,
     ExecutionStatus,
@@ -19,10 +18,13 @@ from src.database.models import (
 )
 
 # 3. 引入crud.py的邏輯函式
-from src.database.crud import get_active_jobs, create_execution
+from src.database.crud import (
+    compute_next_recurring_run_time,
+    create_execution,
+    get_active_jobs,
+    job_to_task_dict,
+)
 from src.worker.executor import dispatch_task
-
-from croniter import croniter
 
 
 def check_predecessors_done(db: Session, job_id: int) -> bool:
@@ -96,30 +98,15 @@ def start_cron_scheduler(db_session_factory: sessionmaker = SessionLocal):
                     # 3-1. 【One-time 核心邏輯】：因為是單次任務，跑完這輪後，必須清除 next_run_time 防止重複觸發
                     job.next_run_time = None
                 elif job.schedule_type == ScheduleType.RECURRING:
-                    # 3-2. 【Recurring】
-                    if job.cron_expression:
-                        try:
-                            cron = croniter(job.cron_expression, now_utc)
-                            job.next_run_time = cron.get_next(datetime)
-                        except Exception as cron_err:
-                            print(
-                                f"Failed to parse cron expression for job {job.job_id}: {cron_err}"
-                            )
-                            job.next_run_time = None
-                    else:
-                        job.next_run_time = None
+                    job.next_run_time = compute_next_recurring_run_time(
+                        job.cron_expression,
+                        now_utc,
+                    )
 
                 db.flush()
 
                 # 4. 任務封裝：將 SQLAlchemy 物件轉成普通的 Python 字典
-                job_dict = {
-                    "job_id": job.job_id,
-                    "method": job.method.value,  # Enum 轉成字串
-                    "endpoint": job.endpoint,  # 目標 API 網址
-                    "headers": job.headers,  # JSON 格式的 Header
-                    "body": job.body,  # JSON 格式的 Body
-                    "timeout": 300,  # 預設超時控制 (5分鐘)
-                }
+                job_dict = job_to_task_dict(job)
 
                 # 5. 派發交棒：呼叫dispatch_task，正式put進task_queue
                 dispatch_task(execution_id=exec_record.execution_id, job_dict=job_dict)
