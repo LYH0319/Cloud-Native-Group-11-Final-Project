@@ -52,6 +52,29 @@
 
 4. local ci test 如果 fail 在 `Test report` 是正常的，可以直接 push。
 
+### backend test
+後端測試已依照測試類型拆成 `unit` 與 `integration`，也可以用 pytest marker 分開執行。
+
+```bash
+cd backend
+
+# 跑全部 backend tests
+pytest
+
+# 只跑 unit tests
+pytest -m unit
+
+# 只跑 integration tests
+pytest -m integration
+
+# 排除 integration tests
+pytest -m "not integration"
+
+# 也可以直接指定資料夾
+pytest tests/unit
+pytest tests/integration
+```
+
 ## 🛠️ database CRUD 使用指南
 
 目前已完成 User、Job、Execution、JobDependency、LogReference 相關 CRUD 功能。
@@ -150,17 +173,17 @@ Cloud-Native-Group-11-Final-Project/
     │       └── security.py          # 密碼雜湊、JWT 建立與驗證
     │
     └── tests/
-        ├── api/
-        │   └── test_api.py          # Auth、Job API、Manual trigger、History、Logs 測試
-        ├── database/
-        │   └── test_crud.py         # CRUD 與排程時間計算測試
-        ├── scheduler/
-        │   └── test_scheduler.py    # Scheduler 派發與相依性邏輯測試
-        ├── worker/
-        │   ├── test_dispatch.py
-        │   └── test_executor.py
-        └── utils/
-            └── test_logger.py
+        ├── conftest.py              # 共用 pytest fixtures
+        ├── unit/                    # 單一模組或單一層級測試
+        │   ├── test_database_crud.py
+        │   ├── test_utils_logger.py
+        │   └── test_dummy.py
+        ├── integration/             # 跨 API / DB / scheduler / worker 流程測試
+        │   ├── test_api.py
+        │   ├── test_scheduler_flow.py
+        │   └── test_worker_executor_flow.py
+        └── helpers/
+            └── manual_redis_dispatch.py
 ```
 
 ## 🚀 本地開啟後端與模擬前端

@@ -1,4 +1,4 @@
-# backend/test_dispatch.py
+# Manual Redis dispatch helper. This is intentionally not a pytest test module.
 import redis
 import json
 

@@ -13,12 +13,16 @@ from src.database.connection import Base, get_db
 from src.database.models import (
     ExecutionStatus,
     HttpMethod,
+    JobStatus,
     ScheduleType,
     TriggerType,
     UserRole,
 )
 from src.utils import logger as log_storage
 from src.utils.security import create_access_token
+
+pytestmark = [pytest.mark.integration, pytest.mark.api, pytest.mark.auth]
+
 
 @pytest.fixture()
 def api_db_session():
@@ -150,6 +154,26 @@ def test_auth_register_rejects_duplicate_email_or_username(client):
     assert client.post("/api/auth/register", json=duplicate_username).status_code == 409
 
 
+def test_auth_register_rejects_duplicate_employee_id(client):
+    payload = {
+        "employee_id": "auth_user_2b",
+        "username": "AuthUserTwoB",
+        "email": "auth2b@example.com",
+        "password": "secret123",
+    }
+    assert client.post("/api/auth/register", json=payload).status_code == 201
+
+    duplicate_employee_id = {
+        **payload,
+        "username": "AuthUserTwoC",
+        "email": "auth2c@example.com",
+    }
+
+    response = client.post("/api/auth/register", json=duplicate_employee_id)
+
+    assert response.status_code == 409
+
+
 def test_auth_login_returns_access_token(client):
     client.post(
         "/api/auth/register",
@@ -187,6 +211,15 @@ def test_auth_login_invalid_password_fails(client):
     response = client.post(
         "/api/auth/login",
         json={"identifier": "auth6@example.com", "password": "wrong"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_invalid_token_is_rejected(client):
+    response = client.get(
+        "/api/jobs/",
+        headers={"Authorization": "Bearer not-a-valid-token"},
     )
 
     assert response.status_code == 401
@@ -475,6 +508,56 @@ def test_register_recurring_job_rejects_invalid_cron(client, api_db_session):
     assert response.status_code == 400
 
 
+def test_register_recurring_job_without_cron_is_rejected(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Missing Cron",
+            "method": "GET",
+            "endpoint": "http://test.com/missing-cron",
+            "schedule_type": "Recurring",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 400
+
+
+def test_register_job_rejects_unsupported_http_method(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Bad Method",
+            "method": "TRACE",
+            "endpoint": "http://test.com/bad-method",
+            "schedule_type": "One-time",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 422
+
+
+def test_register_job_rejects_missing_endpoint(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/",
+        json={
+            "job_name": "Missing Endpoint",
+            "method": "GET",
+            "schedule_type": "One-time",
+        },
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 422
+
+
 def test_unauthenticated_job_creation_is_rejected(client):
     response = client.post(
         "/api/jobs/",
@@ -587,6 +670,30 @@ def test_manual_trigger_rejects_non_owner(client, api_db_session):
     )
 
     assert response.status_code == 404
+
+
+def test_manual_trigger_rejects_non_existent_job(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+
+    response = client.post(
+        "/api/jobs/9999/trigger",
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 404
+
+
+def test_manual_trigger_rejects_inactive_job(client, api_db_session):
+    job = _create_job(api_db_session, "api_inactive_job")
+    job.status = JobStatus.DISABLED
+    api_db_session.commit()
+
+    response = client.post(
+        f"/api/jobs/{job.job_id}/trigger",
+        headers=_auth_headers_for_job(api_db_session, job),
+    )
+
+    assert response.status_code == 409
 
 
 def test_execution_history_rejects_non_owner(client, api_db_session):

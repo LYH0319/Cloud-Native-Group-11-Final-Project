@@ -19,28 +19,7 @@ from src.database import crud
 # Import the module to be tested
 from src.scheduler.cron_scheduler import check_predecessors_done, start_cron_scheduler
 
-# =====================================================================
-#   自動建表版裝配器：確保每次跑測試，MySQL 裡面的資料表都是蓋好的！
-# =====================================================================
-from sqlalchemy.orm import Session
-from src.database.core import SessionLocal, engine
-from src.database.models import Base
-
-@pytest.fixture(scope="function")
-def db_session():
-    """
-    建立一個乾淨、獨立的資料庫 Session 給每個測試案例使用。
-    """
-    Base.metadata.create_all(bind=engine)
-    
-    session: Session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.rollback()  # 關鍵：測試完自動復原
-        session.close()     # 釋放連線
-
-
+pytestmark = [pytest.mark.integration, pytest.mark.scheduler]
 
 # ==========================================
 # 1. Test: check_predecessors_done
@@ -348,6 +327,126 @@ def test_scheduler_skips_job_when_dependency_not_met(
 
     db_session.refresh(downstream_job)
     assert downstream_job.next_run_time == past_time.replace(tzinfo=None)
+
+
+@patch("src.scheduler.cron_scheduler.dispatch_task")
+@patch("time.sleep", side_effect=InterruptedError)
+def test_scheduler_skips_future_job(mock_sleep, mock_dispatch, db_session):
+    user = schemas.UserCreate(
+        employee_id="0004_future", username="FutureJob", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    future_time = datetime.now(timezone.utc) + timedelta(hours=1)
+    crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="future_job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/future",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+        next_run_time=future_time,
+    )
+
+    try:
+        with patch.object(db_session, "close"):
+            start_cron_scheduler(db_session_factory=lambda: db_session)
+    except InterruptedError:
+        pass
+
+    mock_dispatch.assert_not_called()
+
+
+@patch("src.scheduler.cron_scheduler.dispatch_task")
+@patch("time.sleep", side_effect=InterruptedError)
+def test_scheduler_skips_inactive_job(mock_sleep, mock_dispatch, db_session):
+    user = schemas.UserCreate(
+        employee_id="0004_inactive", username="InactiveJob", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    past_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="inactive_job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/inactive",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+        next_run_time=past_time,
+    )
+    crud.change_job_status(db=db_session, job_id=job.job_id, new_status=JobStatus.DISABLED)
+
+    try:
+        with patch.object(db_session, "close"):
+            start_cron_scheduler(db_session_factory=lambda: db_session)
+    except InterruptedError:
+        pass
+
+    mock_dispatch.assert_not_called()
+
+
+@patch("src.scheduler.cron_scheduler.dispatch_task")
+@patch("time.sleep", side_effect=InterruptedError)
+def test_scheduler_dispatches_job_when_dependency_succeeded(
+    mock_sleep, mock_dispatch, db_session
+):
+    user = schemas.UserCreate(
+        employee_id="0004_dep_success",
+        username="DepSuccess",
+        role=UserRole.DEVELOPER,
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    upstream_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="upstream_done",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/upstream-done",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    past_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+    downstream_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="downstream_ready",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/downstream-ready",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+        next_run_time=past_time,
+    )
+    crud.create_job_dependency(
+        db=db_session,
+        dependency_in=schemas.JobDependencyCreate(
+            upstream_id=upstream_job.job_id,
+            downstream_id=downstream_job.job_id,
+        ),
+    )
+    upstream_execution = crud.create_execution(
+        db=db_session,
+        job_id=upstream_job.job_id,
+        trigger_type=TriggerType.SCHEDULER,
+    )
+    crud.update_execution_status(
+        db=db_session,
+        execution_id=upstream_execution.execution_id,
+        status=ExecutionStatus.SUCCESS,
+    )
+
+    try:
+        with patch.object(db_session, "close"):
+            start_cron_scheduler(db_session_factory=lambda: db_session)
+    except InterruptedError:
+        pass
+
+    mock_dispatch.assert_called_once()
+    assert mock_dispatch.call_args.kwargs["job_dict"]["job_id"] == downstream_job.job_id
 
 
 @patch("src.scheduler.cron_scheduler.dispatch_task")
