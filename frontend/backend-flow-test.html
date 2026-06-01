@@ -20,8 +20,13 @@
         --danger: #b3261e;
         --code-bg: #111827;
         --code-text: #e5e7eb;
-        --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
       }
 
       * {
@@ -263,7 +268,9 @@
   <body>
     <header>
       <h1>後端任務流程手動測試台</h1>
-      <p>這是測試用單頁前端，用來驗證註冊、登入、建立任務、手動觸發、查詢 execution 與讀取 logs。</p>
+      <p>
+        這是測試用單頁前端，用來驗證註冊、登入、建立任務、手動觸發、查詢 execution 與讀取 logs。
+      </p>
     </header>
 
     <main>
@@ -271,7 +278,10 @@
         <section class="stack">
           <div>
             <h2>連線與登入狀態</h2>
-            <p>登入後會把 JWT 存在本頁 localStorage，後續 jobs / executions API 會自動帶 Bearer token。</p>
+            <p>
+              登入後會把 JWT 存在本頁 localStorage，後續 jobs / executions API 會自動帶 Bearer
+              token。
+            </p>
           </div>
           <label>
             API 根路徑，不要填 register/login 端點
@@ -323,7 +333,10 @@
         <section class="stack">
           <div>
             <h2>建立任務</h2>
-            <p>One-time 會計算 next_run_time；Recurring 會檢查 cron。Docker worker 內部可用 backend hostname。</p>
+            <p>
+              One-time 會計算 next_run_time；Recurring 會檢查 cron。Docker worker 內部可用 backend
+              hostname。
+            </p>
           </div>
           <label>
             任務名稱
@@ -425,7 +438,10 @@
         <section class="stack">
           <div>
             <h2>執行紀錄</h2>
-            <p>手動觸發後可刷新 execution，確認 worker 是否回報 Running / Success / Failed / Timeout。</p>
+            <p>
+              手動觸發後可刷新 execution，確認 worker 是否回報 Running / Success / Failed /
+              Timeout。
+            </p>
           </div>
           <div class="panel">
             <table>
@@ -455,36 +471,36 @@
     </main>
 
     <script>
-      const stateKey = "group11-backend-flow-test";
+      const stateKey = 'group11-backend-flow-test';
       const state = loadState();
       const $ = (id) => document.getElementById(id);
 
       const labels = {
-        Pending: "等待中",
-        Running: "執行中",
-        Success: "成功",
-        Failed: "失敗",
-        Timeout: "逾時",
-        Cancelled: "已取消",
-        Manual: "手動",
-        Scheduler: "排程",
-        "One-time": "單次",
-        Recurring: "週期",
-        Active: "啟用",
-        Deleted: "已刪除",
+        Pending: '等待中',
+        Running: '執行中',
+        Success: '成功',
+        Failed: '失敗',
+        Timeout: '逾時',
+        Cancelled: '已取消',
+        Manual: '手動',
+        Scheduler: '排程',
+        'One-time': '單次',
+        Recurring: '週期',
+        Active: '啟用',
+        Deleted: '已刪除'
       };
 
       function loadState() {
         try {
           return (
             JSON.parse(localStorage.getItem(stateKey)) || {
-              token: "",
+              token: '',
               jobs: [],
-              executions: [],
+              executions: []
             }
           );
         } catch {
-          return { token: "", jobs: [], executions: [] };
+          return { token: '', jobs: [], executions: [] };
         }
       }
 
@@ -493,28 +509,27 @@
       }
 
       function apiBase() {
-        const base = $("apiBase").value.replace(/\/$/, "");
-        const apiIndex = base.indexOf("/api/");
+        const base = $('apiBase').value.replace(/\/$/, '');
+        const apiIndex = base.indexOf('/api/');
         if (apiIndex !== -1) return base.slice(0, apiIndex + 4);
-        return base.endsWith("/api") ? base : `${base}/api`;
+        return base.endsWith('/api') ? base : `${base}/api`;
       }
 
       function authHeaders() {
         return state.token ? { Authorization: `Bearer ${state.token}` } : {};
       }
 
-      function setStatus(message, type = "") {
-        $("statusLine").textContent = message;
-        $("statusLine").className = `status-line ${type}`;
+      function setStatus(message, type = '') {
+        $('statusLine').textContent = message;
+        $('statusLine').className = `status-line ${type}`;
       }
 
       function showResult(data) {
-        $("result").textContent =
-          typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        $('result').textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
       }
 
       function renderAuth() {
-        $("tokenText").textContent = state.token ? state.token : "未登入";
+        $('tokenText').textContent = state.token ? state.token : '未登入';
       }
 
       function parseJson(id) {
@@ -529,176 +544,167 @@
           response = await fetch(url, {
             ...options,
             headers: {
-              "Content-Type": "application/json",
+              'Content-Type': 'application/json',
               ...authHeaders(),
-              ...(options.headers || {}),
-            },
+              ...(options.headers || {})
+            }
           });
         } catch (error) {
           throw new Error(
-            `無法連線到 ${url}。請確認這頁是用 http://localhost:5500 開啟，且 API 根路徑是 http://localhost:8000/api。原始錯誤：${error.message}`,
+            `無法連線到 ${url}。請確認這頁是用 http://localhost:5500 開啟，且 API 根路徑是 http://localhost:8000/api。原始錯誤：${error.message}`
           );
         }
-        const contentType = response.headers.get("content-type") || "";
-        const data = contentType.includes("application/json")
+        const contentType = response.headers.get('content-type') || '';
+        const data = contentType.includes('application/json')
           ? await response.json()
           : await response.text();
         if (!response.ok) {
-          const detail =
-            typeof data === "object" ? data.detail || JSON.stringify(data) : data;
+          const detail = typeof data === 'object' ? data.detail || JSON.stringify(data) : data;
           throw new Error(`HTTP ${response.status}: ${detail}`);
         }
         return data;
       }
 
       async function checkHealth() {
-        const data = await apiRequest("/health");
-        setStatus(`後端連線正常：${data.status}`, "ok");
+        const data = await apiRequest('/health');
+        setStatus(`後端連線正常：${data.status}`, 'ok');
         showResult(data);
       }
 
       async function registerUser() {
-        const data = await apiRequest("/auth/register", {
-          method: "POST",
+        const data = await apiRequest('/auth/register', {
+          method: 'POST',
           body: JSON.stringify({
-            employee_id: $("employeeId").value.trim(),
-            username: $("username").value.trim(),
-            email: $("email").value.trim(),
-            password: $("password").value,
-          }),
+            employee_id: $('employeeId').value.trim(),
+            username: $('username').value.trim(),
+            email: $('email').value.trim(),
+            password: $('password').value
+          })
         });
-        setStatus(`註冊成功：${data.username}`, "ok");
+        setStatus(`註冊成功：${data.username}`, 'ok');
         showResult(data);
       }
 
       async function loginUser() {
-        const data = await apiRequest("/auth/login", {
-          method: "POST",
+        const data = await apiRequest('/auth/login', {
+          method: 'POST',
           body: JSON.stringify({
-            identifier: $("email").value.trim(),
-            password: $("password").value,
-          }),
+            identifier: $('email').value.trim(),
+            password: $('password').value
+          })
         });
         state.token = data.access_token;
         saveState();
         renderAuth();
-        setStatus(`登入成功：${data.user.username}`, "ok");
+        setStatus(`登入成功：${data.user.username}`, 'ok');
         showResult(data);
         await listJobs();
       }
 
       function logoutUser() {
-        state.token = "";
+        state.token = '';
         saveState();
         renderAuth();
-        setStatus("已登出，本頁不會再自動帶 Authorization header。");
+        setStatus('已登出，本頁不會再自動帶 Authorization header。');
       }
 
       async function createJob() {
-        const scheduleType = $("scheduleType").value;
+        const scheduleType = $('scheduleType').value;
         const payload = {
-          job_name: $("jobName").value.trim(),
-          method: $("method").value,
-          endpoint: $("endpoint").value.trim(),
+          job_name: $('jobName').value.trim(),
+          method: $('method').value,
+          endpoint: $('endpoint').value.trim(),
           schedule_type: scheduleType,
-          headers: parseJson("headersJson"),
-          body: parseJson("bodyJson"),
+          headers: parseJson('headersJson'),
+          body: parseJson('bodyJson')
         };
-        if (scheduleType === "Recurring") {
-          payload.cron_expression = $("cronExpression").value.trim();
+        if (scheduleType === 'Recurring') {
+          payload.cron_expression = $('cronExpression').value.trim();
         }
 
-        const data = await apiRequest("/jobs/", {
-          method: "POST",
-          body: JSON.stringify(payload),
+        const data = await apiRequest('/jobs/', {
+          method: 'POST',
+          body: JSON.stringify(payload)
         });
-        $("jobId").value = data.job_id;
+        $('jobId').value = data.job_id;
         rememberJob({
           ...payload,
           job_id: data.job_id,
           next_run_time: data.next_run_time,
-          status: "Active",
+          status: 'Active'
         });
-        setStatus(`任務已建立：Job ID ${data.job_id}`, "ok");
+        setStatus(`任務已建立：Job ID ${data.job_id}`, 'ok');
         showResult(data);
       }
 
       async function listJobs() {
-        const data = await apiRequest("/jobs/");
+        const data = await apiRequest('/jobs/');
         state.jobs = data;
         saveState();
         renderJobs();
-        setStatus(`已載入 ${data.length} 個目前使用者的任務`, "ok");
+        setStatus(`已載入 ${data.length} 個目前使用者的任務`, 'ok');
         showResult(data);
       }
 
-      async function loadJob(jobId = numberValue("jobId", "請先輸入 Job ID")) {
+      async function loadJob(jobId = numberValue('jobId', '請先輸入 Job ID')) {
         const data = await apiRequest(`/jobs/${jobId}`);
-        $("jobId").value = data.job_id;
+        $('jobId').value = data.job_id;
         rememberJob(data);
-        setStatus(`已讀取 Job ${jobId}`, "ok");
+        setStatus(`已讀取 Job ${jobId}`, 'ok');
         showResult(data);
       }
 
-      async function triggerJob(jobId = numberValue("jobId", "請先輸入 Job ID")) {
-        const data = await apiRequest(`/jobs/${jobId}/trigger`, { method: "POST" });
-        $("executionId").value = data.execution.execution_id;
+      async function triggerJob(jobId = numberValue('jobId', '請先輸入 Job ID')) {
+        const data = await apiRequest(`/jobs/${jobId}/trigger`, { method: 'POST' });
+        $('executionId').value = data.execution.execution_id;
         rememberExecution(data.execution);
         setStatus(
           `已排入 ${data.dispatch.queue_name}，Execution ID ${data.execution.execution_id}`,
-          "ok",
+          'ok'
         );
         showResult(data);
       }
 
-      async function loadHistory(jobId = numberValue("jobId", "請先輸入 Job ID")) {
+      async function loadHistory(jobId = numberValue('jobId', '請先輸入 Job ID')) {
         const data = await apiRequest(`/jobs/${jobId}/executions?limit=20`);
-        state.executions = mergeById(
-          state.executions,
-          data.items,
-          "execution_id",
-        );
+        state.executions = mergeById(state.executions, data.items, 'execution_id');
         saveState();
         renderExecutions();
-        setStatus(`已載入 Job ${jobId} 的 ${data.count} 筆執行紀錄`, "ok");
+        setStatus(`已載入 Job ${jobId} 的 ${data.count} 筆執行紀錄`, 'ok');
         showResult(data);
       }
 
       async function loadExecution(
-        executionId = numberValue("executionId", "請先輸入 Execution ID"),
+        executionId = numberValue('executionId', '請先輸入 Execution ID')
       ) {
         const data = await apiRequest(`/executions/${executionId}`);
         rememberExecution(data);
-        setStatus(`已更新 Execution ${executionId}`, "ok");
+        setStatus(`已更新 Execution ${executionId}`, 'ok');
         showResult(data);
       }
 
       async function loadLogs() {
-        const executionId = numberValue("executionId", "請先輸入 Execution ID");
+        const executionId = numberValue('executionId', '請先輸入 Execution ID');
         const data = await apiRequest(`/executions/${executionId}/logs`);
-        setStatus(`已查詢 Execution ${executionId} 的 log metadata`, "ok");
+        setStatus(`已查詢 Execution ${executionId} 的 log metadata`, 'ok');
         showResult(data);
       }
 
       async function loadLogContent() {
-        const executionId = numberValue("executionId", "請先輸入 Execution ID");
+        const executionId = numberValue('executionId', '請先輸入 Execution ID');
         const data = await apiRequest(`/executions/${executionId}/logs/content`);
-        setStatus(`已讀取 Execution ${executionId} 的 log 內容`, "ok");
+        setStatus(`已讀取 Execution ${executionId} 的 log 內容`, 'ok');
         showResult(data);
       }
 
       function rememberJob(job) {
-        state.jobs = mergeById(state.jobs, [job], "job_id");
+        state.jobs = mergeById(state.jobs, [job], 'job_id');
         saveState();
         renderJobs();
       }
 
       function rememberExecution(execution) {
-        state.executions = mergeById(
-          state.executions,
-          [execution],
-          "execution_id",
-        );
+        state.executions = mergeById(state.executions, [execution], 'execution_id');
         saveState();
         renderExecutions();
       }
@@ -712,15 +718,15 @@
       }
 
       function renderJobs() {
-        $("jobsBody").innerHTML =
+        $('jobsBody').innerHTML =
           state.jobs
             .map(
               (job) => `
                 <tr>
                   <td>${job.job_id}</td>
-                  <td>${escapeHtml(job.job_name || "-")}</td>
-                  <td>${labels[job.schedule_type] || job.schedule_type || "-"}</td>
-                  <td><span class="badge ${String(job.status || "").toLowerCase()}">${labels[job.status] || job.status || "-"}</span></td>
+                  <td>${escapeHtml(job.job_name || '-')}</td>
+                  <td>${labels[job.schedule_type] || job.schedule_type || '-'}</td>
+                  <td><span class="badge ${String(job.status || '').toLowerCase()}">${labels[job.status] || job.status || '-'}</span></td>
                   <td>${formatDate(job.next_run_time)}</td>
                   <td>
                     <button type="button" data-job="${job.job_id}" data-action="use-job">帶入</button>
@@ -728,31 +734,31 @@
                     <button type="button" data-job="${job.job_id}" data-action="history-job">紀錄</button>
                   </td>
                 </tr>
-              `,
+              `
             )
-            .join("") || `<tr><td colspan="6">尚無任務。請先登入後建立或重新整理。</td></tr>`;
+            .join('') || `<tr><td colspan="6">尚無任務。請先登入後建立或重新整理。</td></tr>`;
       }
 
       function renderExecutions() {
-        $("executionsBody").innerHTML =
+        $('executionsBody').innerHTML =
           state.executions
             .map(
               (execution) => `
                 <tr>
                   <td>${execution.execution_id}</td>
                   <td>${execution.job_id}</td>
-                  <td>${labels[execution.trigger_type] || execution.trigger_type || "-"}</td>
-                  <td><span class="badge ${String(execution.status || "").toLowerCase()}">${labels[execution.status] || execution.status || "-"}</span></td>
-                  <td>${escapeHtml(execution.worker_id || "-")}</td>
+                  <td>${labels[execution.trigger_type] || execution.trigger_type || '-'}</td>
+                  <td><span class="badge ${String(execution.status || '').toLowerCase()}">${labels[execution.status] || execution.status || '-'}</span></td>
+                  <td>${escapeHtml(execution.worker_id || '-')}</td>
                   <td>
                     <button type="button" data-execution="${execution.execution_id}" data-action="use-execution">帶入</button>
                     <button type="button" data-execution="${execution.execution_id}" data-action="refresh-execution">刷新</button>
                     <button type="button" data-execution="${execution.execution_id}" data-action="logs-execution">Logs</button>
                   </td>
                 </tr>
-              `,
+              `
             )
-            .join("") || `<tr><td colspan="6">尚無 execution。</td></tr>`;
+            .join('') || `<tr><td colspan="6">尚無 execution。</td></tr>`;
       }
 
       function numberValue(id, errorMessage) {
@@ -762,74 +768,86 @@
       }
 
       function formatDate(value) {
-        if (!value) return "-";
+        if (!value) return '-';
         const date = new Date(value);
         return Number.isNaN(date.getTime())
           ? value
-          : date.toLocaleString("zh-TW", { hour12: false });
+          : date.toLocaleString('zh-TW', { hour12: false });
       }
 
       function escapeHtml(value) {
         return String(value)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
       }
 
       function run(handler) {
         return async () => {
           try {
-            setStatus("請求處理中...");
+            setStatus('請求處理中...');
             await handler();
           } catch (error) {
-            setStatus(error.message || String(error), "err");
+            setStatus(error.message || String(error), 'err');
             showResult({ error: error.message || String(error) });
           }
         };
       }
 
-      $("healthBtn").addEventListener("click", run(checkHealth));
-      $("registerBtn").addEventListener("click", run(registerUser));
-      $("loginBtn").addEventListener("click", run(loginUser));
-      $("logoutBtn").addEventListener("click", logoutUser);
-      $("createJobBtn").addEventListener("click", run(createJob));
-      $("listJobsBtn").addEventListener("click", run(listJobs));
-      $("refreshJobsBtn").addEventListener("click", run(listJobs));
-      $("loadJobBtn").addEventListener("click", run(() => loadJob()));
-      $("triggerBtn").addEventListener("click", run(() => triggerJob()));
-      $("historyBtn").addEventListener("click", run(() => loadHistory()));
-      $("executionBtn").addEventListener("click", run(() => loadExecution()));
-      $("logsBtn").addEventListener("click", run(loadLogs));
-      $("logContentBtn").addEventListener("click", run(loadLogContent));
-      $("clearBtn").addEventListener("click", () => {
-        state.token = "";
+      $('healthBtn').addEventListener('click', run(checkHealth));
+      $('registerBtn').addEventListener('click', run(registerUser));
+      $('loginBtn').addEventListener('click', run(loginUser));
+      $('logoutBtn').addEventListener('click', logoutUser);
+      $('createJobBtn').addEventListener('click', run(createJob));
+      $('listJobsBtn').addEventListener('click', run(listJobs));
+      $('refreshJobsBtn').addEventListener('click', run(listJobs));
+      $('loadJobBtn').addEventListener(
+        'click',
+        run(() => loadJob())
+      );
+      $('triggerBtn').addEventListener(
+        'click',
+        run(() => triggerJob())
+      );
+      $('historyBtn').addEventListener(
+        'click',
+        run(() => loadHistory())
+      );
+      $('executionBtn').addEventListener(
+        'click',
+        run(() => loadExecution())
+      );
+      $('logsBtn').addEventListener('click', run(loadLogs));
+      $('logContentBtn').addEventListener('click', run(loadLogContent));
+      $('clearBtn').addEventListener('click', () => {
+        state.token = '';
         state.jobs = [];
         state.executions = [];
         saveState();
         renderAuth();
         renderJobs();
         renderExecutions();
-        setStatus("已清除本頁 localStorage 狀態。");
-        showResult("尚無資料。");
+        setStatus('已清除本頁 localStorage 狀態。');
+        showResult('尚無資料。');
       });
 
-      document.body.addEventListener("click", (event) => {
+      document.body.addEventListener('click', (event) => {
         const target = event.target;
         if (!(target instanceof HTMLButtonElement)) return;
 
         const jobId = Number(target.dataset.job);
         const executionId = Number(target.dataset.execution);
-        if (target.dataset.action === "use-job") $("jobId").value = jobId;
-        if (target.dataset.action === "trigger-job") run(() => triggerJob(jobId))();
-        if (target.dataset.action === "history-job") run(() => loadHistory(jobId))();
-        if (target.dataset.action === "use-execution") $("executionId").value = executionId;
-        if (target.dataset.action === "refresh-execution") {
+        if (target.dataset.action === 'use-job') $('jobId').value = jobId;
+        if (target.dataset.action === 'trigger-job') run(() => triggerJob(jobId))();
+        if (target.dataset.action === 'history-job') run(() => loadHistory(jobId))();
+        if (target.dataset.action === 'use-execution') $('executionId').value = executionId;
+        if (target.dataset.action === 'refresh-execution') {
           run(() => loadExecution(executionId))();
         }
-        if (target.dataset.action === "logs-execution") {
-          $("executionId").value = executionId;
+        if (target.dataset.action === 'logs-execution') {
+          $('executionId').value = executionId;
           run(loadLogs)();
         }
       });
