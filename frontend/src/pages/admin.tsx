@@ -34,7 +34,6 @@ export const Admin = () => {
         throw new Error(data.detail || '新增失敗');
       }
 
-      // 新增成功，清空輸入框
       setIsError(false);
       setMessage(`成功建立員工！編號: ${data.employee_id}`);
       setEmployeeId('');

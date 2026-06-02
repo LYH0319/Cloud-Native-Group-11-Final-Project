@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Home } from './pages/home';
 import { Login } from './pages/login';
 import { Admin } from './pages/admin';
 import { DeveloperHome } from './pages/developerHome';
@@ -14,7 +13,14 @@ const App = () => {
       <Routes>
         <Route path="/" element={<Login />} />
 
-        <Route path="/admin" element={<Admin />} />
+        <Route
+          path="/admin"
+          element={
+            <RouteGuard allowedRole="admin">
+              <Admin />
+            </RouteGuard>
+          }
+        />
 
         <Route
           path="/developer"

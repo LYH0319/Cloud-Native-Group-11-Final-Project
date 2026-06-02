@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
-from src.api.routers import auth, history, jobs
+from src.api.routers import auth, history, jobs, frontend
 from src.database.connection import Base, engine
 from src.database.core import ensure_schema_compatibility
 
@@ -57,4 +57,4 @@ def root():
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
-app.include_router(frontend.router, prefix="/api")
+app.include_router(frontend.router)

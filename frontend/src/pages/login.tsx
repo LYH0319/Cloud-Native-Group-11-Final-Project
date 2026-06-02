@@ -21,7 +21,6 @@ export const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // 檢查是否已登入
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
@@ -53,7 +52,6 @@ export const Login = () => {
     navigate('/');
   };
 
-  // 1. 檢查員工編號是否存在與是否已註冊密碼
   const checkIdHandler = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -66,7 +64,6 @@ export const Login = () => {
       const response = await fetch('/api/auth/check-id', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // 建議與後端參數對齊，例如傳遞 employee_id
         body: JSON.stringify({ employee_id: trimmedId })
       });
 
@@ -74,7 +71,6 @@ export const Login = () => {
         throw new Error('Can not find ID');
       }
 
-      // 預期後端回傳格式: { isRegistered: true/false } (是否有密碼)
       const data = await response.json();
 
       if (data.isRegistered) {
@@ -93,7 +89,6 @@ export const Login = () => {
     }
   };
 
-  // 2. 註冊新密碼
   const registerPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -122,7 +117,6 @@ export const Login = () => {
     }
   };
 
-  // 3. 登入驗證
   const loginPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -139,7 +133,6 @@ export const Login = () => {
         throw new Error('Password incorrect');
       }
 
-      // 預期後端回傳使用者資訊，例如: { id: "001", role: "developer" }
       const userData = await response.json();
       localStorage.setItem('user', JSON.stringify(userData));
 
@@ -159,7 +152,6 @@ export const Login = () => {
     }
   };
 
-  // 4. 重設密碼
   const resetPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
@@ -188,7 +180,6 @@ export const Login = () => {
     }
   };
 
-  // 成功畫面的計時跳轉邏輯
   useEffect(() => {
     if (step === 'registerSuccess' || step === 'resetSuccess') {
       const timer = setTimeout(() => {

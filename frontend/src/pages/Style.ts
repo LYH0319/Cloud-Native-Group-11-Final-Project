@@ -228,8 +228,163 @@ export const loginStyles = {
   }
 };
 
+export const operatorStyles = {
+  header: {
+    backgroundColor: '#00007A', // 系統經典深藍色
+    color: 'white',
+    padding: '16px 32px',
+    fontSize: '26px',
+    fontWeight: 'bold' as const,
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontFamily: 'sans-serif',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  },
+  headerRight: {
+    display: 'flex',
+    gap: '20px',
+    alignItems: 'center',
+    fontSize: '16px'
+  },
+  logoutBtn: {
+    backgroundColor: 'white',
+    color: '#00007A',
+    border: 'none',
+    borderRadius: '20px',
+    padding: '6px 16px',
+    fontWeight: 'bold' as const,
+    cursor: 'pointer'
+  },
+  container: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA', // 淺灰底色，襯托出白色卡片
+    minHeight: 'calc(100vh - 70px)',
+    padding: '40px 20px',
+    fontFamily: 'sans-serif'
+  },
+  dashboardCard: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)', // 仿照圖片的立體卡片陰影
+    width: '100%',
+    maxWidth: '1100px',
+    padding: '30px',
+    boxSizing: 'border-box' as const
+  },
+  title: {
+    fontSize: '24px',
+    fontWeight: 'bold' as const,
+    color: '#333',
+    marginBottom: '8px'
+  },
+  subtitle: {
+    fontSize: '14px',
+    color: '#666',
+    marginBottom: '24px'
+  },
+  systemStatus: {
+    backgroundColor: '#E6F4EA',
+    color: '#137333',
+    padding: '12px 20px',
+    borderRadius: '6px',
+    fontSize: '14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '25px',
+    fontWeight: 'bold' as const
+  },
+  jobTable: {
+    width: '100%',
+    borderCollapse: 'collapse' as const,
+    marginTop: '15px',
+    textAlign: 'left' as const
+  },
+  th: {
+    borderBottom: '2px solid #E0E0E0',
+    padding: '12px 8px',
+    color: '#555',
+    fontSize: '15px',
+    fontWeight: 'bold' as const
+  },
+  td: {
+    borderBottom: '1px solid #EEEEEE',
+    padding: '16px 8px',
+    fontSize: '14px',
+    color: '#333',
+    verticalAlign: 'top' as const
+  },
+  badge: (method: string) => {
+    const colors: Record<string, string> = {
+      GET: '#0B6623',
+      POST: '#3366CC',
+      PUT: '#DD9900',
+      DELETE: '#CC3333',
+      PATCH: '#883399'
+    };
+    return {
+      backgroundColor: colors[method] || '#666',
+      color: 'white',
+      padding: '3px 8px',
+      borderRadius: '4px',
+      fontSize: '11px',
+      fontWeight: 'bold' as const,
+      marginRight: '6px'
+    };
+  },
+  statusBadge: (status: string) => {
+    const colors: Record<string, { bg: string; text: string }> = {
+      閒置中: { bg: '#E8EAED', text: '#3C4043' },
+      執行中: { bg: '#E8F0FE', text: '#1A73E8' },
+      執行成功: { bg: '#E6F4EA', text: '#137333' },
+      執行失敗: { bg: '#FCE8E6', text: '#C5221F' }
+    };
+    const style = colors[status] || colors['閒置中'];
+    return {
+      backgroundColor: style.bg,
+      color: style.text,
+      padding: '4px 10px',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: 'bold' as const
+    };
+  },
+  triggerBtn: {
+    backgroundColor: '#00007A', // 與圖片按紐同色系的深藍
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '8px 14px',
+    fontSize: '13px',
+    cursor: 'pointer',
+    fontWeight: 'bold' as const,
+    transition: 'background-color 0.2s',
+    whiteSpace: 'nowrap' as const
+  },
+  detailText: {
+    fontSize: '12px',
+    color: '#666',
+    marginTop: '4px',
+    lineHeight: '1.5'
+  },
+  codeBlock: {
+    fontFamily: 'monospace',
+    backgroundColor: '#F5F5F5',
+    padding: '6px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    marginTop: '4px',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-all' as const
+  }
+};
+
 export default {
   styles,
   homeLoginLogoutStyles,
-  loginStyles
+  loginStyles,
+  operatorStyles
 };
