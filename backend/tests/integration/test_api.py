@@ -194,7 +194,76 @@ def test_auth_login_returns_access_token(client):
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
+    assert body["expires_in"] == 3600
     assert body["user"]["username"] == "AuthUserFive"
+
+
+def test_auth_register_normalizes_email_and_rejects_duplicate(client):
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": " auth_user_7 ",
+            "username": " AuthUserSeven ",
+            "email": " AUTH7@EXAMPLE.COM ",
+            "password": "secret123",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["employee_id"] == "auth_user_7"
+    assert body["username"] == "AuthUserSeven"
+    assert body["email"] == "auth7@example.com"
+
+    duplicate = {
+        "employee_id": "auth_user_8",
+        "username": "AuthUserEight",
+        "email": "auth7@example.com",
+        "password": "secret123",
+    }
+    assert client.post("/api/auth/register", json=duplicate).status_code == 409
+
+
+def test_auth_login_accepts_form_payload(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "auth_user_9",
+            "username": "AuthUserNine",
+            "email": "auth9@example.com",
+            "password": "secret123",
+        },
+    )
+
+    response = client.post(
+        "/api/auth/login",
+        data={"username": "auth_user_9", "password": "secret123"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["username"] == "AuthUserNine"
+
+
+def test_auth_me_returns_current_user(client, api_db_session):
+    user = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="auth_me_user",
+            username="AuthMeUser",
+            email="auth-me@example.com",
+            password="secret123",
+        ),
+    )
+
+    response = client.get("/api/auth/me", headers=_auth_headers_for_user(user))
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == user.user_id
+    assert response.json()["email"] == "auth-me@example.com"
+
+
+def test_auth_logout_requires_valid_token(client):
+    assert client.post("/api/auth/logout").status_code == 401
 
 
 def test_auth_login_invalid_password_fails(client):
