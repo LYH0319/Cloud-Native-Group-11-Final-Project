@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, Dict, Any
 from datetime import datetime
 from src.database.models import UserRole, HttpMethod, ScheduleType, JobStatus
@@ -31,6 +31,21 @@ class UserBase(BaseModel):
     )
     role: UserRole = Field(default=UserRole.DEVELOPER, description="Authorization role")
     email: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("employee_id", "username", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
 
 
 class UserCreate(UserBase):
@@ -86,12 +101,20 @@ class UserLogin(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
 
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 class TokenResponse(BaseModel):
     """JWT token response."""
 
     access_token: str
     token_type: str = "bearer"
+    expires_in: int
     user: UserRead
 
 
