@@ -88,6 +88,12 @@ class User(Base):
     employee_id: Mapped[str] = mapped_column(String(20), unique=True)
     username: Mapped[str] = mapped_column(String(30))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.DEVELOPER)
+    email: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True, default=None
+    )
+    hashed_password: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now(), init=False

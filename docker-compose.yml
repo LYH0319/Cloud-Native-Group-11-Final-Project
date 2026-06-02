@@ -51,6 +51,29 @@ services:
         condition: service_started
     restart: always
 
+  backend-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: group11-scheduler
+    command: ["python", "src/scheduler/cron_scheduler.py"]
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app
+      - LOG_ROOT=/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: always
+
   redis:
     image: redis:7-alpine
     container_name: group11-redis

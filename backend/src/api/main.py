@@ -4,9 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
-from src.api.routers import frontend
-from src.api.routers import history, jobs
+from src.api.routers import auth, history, jobs
 from src.database.connection import Base, engine
+from src.database.core import ensure_schema_compatibility
 
 app = FastAPI(
     title="Group 11 Job Scheduler API",
@@ -15,7 +15,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+    ],
+    allow_origin_regex=r"^http://(localhost|127\.0\.0\.1):\d+$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,6 +35,7 @@ def startup() -> None:
     for _ in range(30):
         try:
             Base.metadata.create_all(bind=engine)
+            ensure_schema_compatibility(engine)
             return
         except OperationalError as error:
             last_error = error
@@ -47,6 +54,7 @@ def root():
     return {"message": "Job Scheduler System API is running"}
 
 
+app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(frontend.router, prefix="/api")

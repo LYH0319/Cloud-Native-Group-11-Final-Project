@@ -2,6 +2,8 @@ import pytest
 
 from src.utils import logger as log_storage
 
+pytestmark = pytest.mark.unit
+
 
 def test_write_execution_log_creates_file_and_returns_size(tmp_path, monkeypatch):
     monkeypatch.setattr(log_storage, "LOG_ROOT", str(tmp_path))

@@ -6,11 +6,37 @@ from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
+from src.api.dependencies import get_current_user
 from src.database.connection import get_db
-from src.database.models import ExecutionStatus, JobStatus, TriggerType
+from src.database.models import ExecutionStatus, JobStatus, TriggerType, User
 from src.utils.logger import read_execution_log, validate_log_path, validate_log_size
 
 router = APIRouter(tags=["executions"])
+
+
+def require_owned_job(job_id: int, db: Session, current_user: User):
+    job = crud.get_job_by_id(db=db, job_id=job_id)
+    if (
+        job is None
+        or job.status == JobStatus.DELETED
+        or job.owner_id != current_user.user_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    return job
+
+
+def require_owned_execution(execution_id: int, db: Session, current_user: User):
+    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
+    if execution is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution not found",
+        )
+    require_owned_job(execution.job_id, db, current_user)
+    return execution
 
 
 @router.get(
@@ -38,14 +64,10 @@ def list_job_executions(
     ] = "created_at",
     order_direction: Literal["asc", "desc"] = "desc",
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return filtered execution history for one job, newest records first."""
-    job = crud.get_job_by_id(db=db, job_id=job_id)
-    if job is None or job.status == JobStatus.DELETED:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
+    require_owned_job(job_id, db, current_user)
 
     executions = crud.get_execution_history(
         db=db,
@@ -75,16 +97,10 @@ def list_job_executions(
 def get_execution(
     execution_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return one execution record by ID."""
-    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
-    if execution is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Execution not found",
-        )
-
-    return execution
+    return require_owned_execution(execution_id, db, current_user)
 
 
 @router.get(
@@ -94,14 +110,10 @@ def get_execution(
 def get_execution_logs(
     execution_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return log metadata for one execution without reading file content."""
-    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
-    if execution is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Execution not found",
-        )
+    require_owned_execution(execution_id, db, current_user)
 
     log_reference = crud.get_log_reference_by_execution_id(
         db=db,
@@ -117,14 +129,10 @@ def get_execution_logs(
 def get_execution_log_content(
     execution_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Return plain text log content for one execution."""
-    execution = crud.get_execution_by_id(db=db, execution_id=execution_id)
-    if execution is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Execution not found",
-        )
+    require_owned_execution(execution_id, db, current_user)
 
     log_reference = crud.get_log_reference_by_execution_id(
         db=db,

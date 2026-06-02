@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, desc, select, func
+from croniter import croniter
+from croniter.croniter import CroniterBadCronError
 from src.database.models import (
     User,
     UserRole,
@@ -11,10 +13,61 @@ from src.database.models import (
     TriggerType,
     JobDependency,
     LogReference,
+    JobStatus
 )
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
 from src.utils.logger import validate_log_path, validate_log_size
+from src.utils.security import hash_password, verify_password
+
+
+def utc_now() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+    return datetime.now(timezone.utc)
+
+
+def compute_initial_next_run_time(
+    job_in: schemas.JobCreate,
+    base_time: datetime | None = None,
+) -> datetime | None:
+    """Compute the first scheduler pickup time for a new job."""
+    base = base_time or utc_now()
+    if job_in.schedule_type == ScheduleType.ONE_TIME:
+        return base
+
+    if job_in.schedule_type == ScheduleType.RECURRING:
+        if not job_in.cron_expression:
+            raise ValueError("cron_expression is required for recurring jobs")
+        if not croniter.is_valid(job_in.cron_expression):
+            raise ValueError("Invalid cron_expression")
+        return croniter(job_in.cron_expression, base).get_next(datetime)
+
+    return None
+
+
+def compute_next_recurring_run_time(
+    cron_expression: str | None,
+    base_time: datetime | None = None,
+) -> datetime | None:
+    """Compute the next recurring run time, returning None for invalid schedules."""
+    if not cron_expression:
+        return None
+    try:
+        return croniter(cron_expression, base_time or utc_now()).get_next(datetime)
+    except (CroniterBadCronError, ValueError):
+        return None
+
+
+def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
+    """Serialize a Job into the worker task payload shape."""
+    return {
+        "job_id": job.job_id,
+        "method": job.method.value,
+        "endpoint": job.endpoint,
+        "headers": job.headers or {},
+        "body": job.body or {},
+        "timeout": timeout,
+    }
 
 # ==========================================
 #                  USER CRUD
@@ -33,7 +86,11 @@ def create_user(db: Session, user_in: schemas.UserCreate) -> User:
         User: The newly created user object.
     """
     new_user = User(
-        employee_id=user_in.employee_id, username=user_in.username, role=user_in.role
+        employee_id=user_in.employee_id,
+        username=user_in.username,
+        role=user_in.role,
+        email=user_in.email,
+        hashed_password=hash_password(user_in.password) if user_in.password else None,
     )
     db.add(new_user)
     db.commit()
@@ -67,6 +124,34 @@ def get_user_by_employee_id(db: Session, employee_id: str) -> User | None:
         User | None: The user object if found, otherwise None.
     """
     return db.scalar(select(User).where(User.employee_id == employee_id))
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    """Retrieves a user by email."""
+    return db.scalar(select(User).where(User.email == email))
+
+
+def get_user_by_username(db: Session, username: str) -> User | None:
+    """Retrieves a user by username."""
+    return db.scalar(select(User).where(User.username == username))
+
+
+def authenticate_user(
+    db: Session,
+    identifier: str,
+    password: str,
+) -> User | None:
+    """Authenticate by email, username, or employee_id."""
+    user = (
+        get_user_by_email(db=db, email=identifier)
+        or get_user_by_username(db=db, username=identifier)
+        or get_user_by_employee_id(db=db, employee_id=identifier)
+    )
+    if not user or not user.is_active:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
 
 
 def get_users(db: Session, skip: int = 0, limit: int = 100) -> list[User]:
@@ -147,6 +232,7 @@ def create_job(
     owner_id: int,
     job_in: schemas.JobCreate,
     next_run_time: datetime | None = None,
+    initialize_next_run_time: bool = False,
 ) -> Job:
     """
     Creates a new HTTP request job in the database.
@@ -166,6 +252,8 @@ def create_job(
         Job: The newly created job object.
     """
     depends_on = getattr(job_in, "depends_on", None) or []
+    if initialize_next_run_time and next_run_time is None:
+        next_run_time = compute_initial_next_run_time(job_in)
 
     new_job = Job(
         owner_id=owner_id,
@@ -871,3 +959,28 @@ def get_log_reference_by_execution_id(
     return db.scalar(
         select(LogReference).where(LogReference.execution_id == execution_id)
     )
+
+
+# 從jobs.py搬過來的
+def get_active_dependency_graph(db: Session) -> dict[int, list[int]]:
+    """從資料庫讀取目前的相依性關係，並打包成鄰接串列"""
+    graph = {}
+    # 透過 join 篩選，只有兩端任務都還活著 (ACTIVE) 的關聯才需要進圖進行死鎖判定
+    stm = (
+        select(JobDependency)
+        .join(Job, JobDependency.downstream_id == Job.job_id)
+        .where(Job.status == JobStatus.ACTIVE)
+    )
+    dependencies = db.scalars(stm).all()
+    for dep in dependencies:
+        if dep.downstream_id not in graph:
+            graph[dep.downstream_id] = []
+        graph[dep.downstream_id].append(dep.upstream_id)
+    return graph
+
+def create_job_dependencies(db: Session, downstream_id: int, upstream_ids: list[int]) -> None:
+    """將多筆前置關聯批次安全寫入 job_dependencies 表"""
+    for upstream_id in upstream_ids:
+        dep_record = JobDependency(upstream_id=upstream_id, downstream_id=downstream_id)
+        db.add(dep_record)
+    db.commit()

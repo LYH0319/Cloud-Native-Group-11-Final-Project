@@ -29,7 +29,8 @@ class UserBase(BaseModel):
         max_length=30,
         description="Display name of the user",
     )
-    role: UserRole = Field(description="Authorization role")
+    role: UserRole = Field(default=UserRole.DEVELOPER, description="Authorization role")
+    email: Optional[str] = Field(default=None, max_length=255)
 
 
 class UserCreate(UserBase):
@@ -39,7 +40,7 @@ class UserCreate(UserBase):
     Inherits all required attributes from UserBase (employee_id, username, role).
     """
 
-    pass
+    password: Optional[str] = Field(default=None, min_length=6, max_length=128)
 
 
 class UserResponse(UserBase):
@@ -88,6 +89,27 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class UserRead(UserResponse):
+    """Public user response. Never includes hashed_password."""
+
+    pass
+
+
+class UserLogin(BaseModel):
+    """Minimal login payload; identifier may be email, username, or employee_id."""
+
+    identifier: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class TokenResponse(BaseModel):
+    """JWT token response."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserRead
+
+
 # ==========================================
 # 2. Job Schemas
 # ==========================================
@@ -126,7 +148,14 @@ class JobCreate(JobBase):
     Inherits all attributes from JobBase.
     """
 
-    pass
+    job_name: str
+    method: HttpMethod
+    endpoint: str
+    schedule_type: ScheduleType
+    headers: Optional[dict] = None
+    body: Optional[dict] = None
+    cron_expression: Optional[str] = None
+    depends_on: Optional[list[int]] = None # 💡 請他加上這一行！
 
 
 class JobResponse(JobBase):
