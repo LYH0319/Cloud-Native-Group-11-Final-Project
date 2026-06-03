@@ -120,8 +120,8 @@ def list_job_executions(
 )
 def get_execution(
     execution_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]= None,                  
+    current_user: Annotated[User, Depends(get_current_user)]= None,
 ):
     """Return one execution record by ID."""
     return require_owned_execution(execution_id, db, current_user)
@@ -183,8 +183,8 @@ def list_executions(
 )
 def get_execution_logs(
     execution_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]= None,                  
+    current_user: Annotated[User, Depends(get_current_user)]= None,
 ):
     """Return log metadata for one execution without reading file content."""
     require_owned_execution(execution_id, db, current_user)
@@ -202,8 +202,8 @@ def get_execution_logs(
 @router.get("/executions/{execution_id}/logs/content")
 def get_execution_log_content(
     execution_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]= None,                  
+    current_user: Annotated[User, Depends(get_current_user)]= None,
 ):
     """Return plain text log content for one execution."""
     require_owned_execution(execution_id, db, current_user)
@@ -241,8 +241,8 @@ def get_execution_log_content(
 )
 def rerun_execution(
     execution_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)]= None,                  
+    current_user: Annotated[User, Depends(get_current_user)]= None,
 ):
     """Let operators/admins rerun the job behind an execution."""
     if not can_view_all_results(current_user):
@@ -298,7 +298,7 @@ def rerun_execution(
 def report_execution_result(
     execution_id: int,
     update_in: schemas.ExecutionWorkerUpdate,
-    db: Annotated[Session, Depends(get_db)],                  
+    db: Annotated[Session, Depends(get_db)]= None,                  
 ):
     """Store the structured result reported by a worker after execution."""
     try:

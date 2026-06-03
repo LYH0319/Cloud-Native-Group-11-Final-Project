@@ -42,8 +42,8 @@ def require_accessible_job(job_id: int, db: Session, current_user: User):
 
 @router.get("/", response_model=list[schemas.JobResponse])
 def list_jobs(
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """List own jobs for developers and all jobs for operators/admins."""
     if can_operate_all_jobs(current_user):
@@ -56,8 +56,8 @@ def list_jobs(
 @router.get("/{job_id}", response_model=schemas.JobResponse)
 def get_job(
     job_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Return one job if it belongs to the authenticated user."""
     job = require_accessible_job(job_id, db, current_user)
@@ -67,8 +67,8 @@ def get_job(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def register_job(
     payload: schemas.JobCreate,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     depends_on = payload.depends_on or []
 
@@ -126,8 +126,8 @@ def register_job(
 )
 def manually_trigger_job(
     job_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Create a manual execution and enqueue it for worker execution."""
     job = require_accessible_job(job_id, db, current_user)
@@ -171,8 +171,8 @@ def manually_trigger_job(
 def update_job_status(
     job_id: int,
     payload: schemas.JobStatusUpdate,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Allow operators/admins to pause or resume jobs."""
     if not can_operate_all_jobs(current_user):

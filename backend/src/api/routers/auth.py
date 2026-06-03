@@ -63,7 +63,7 @@ def _ensure_unique_user_fields(
 )
 def register_user(
     user_in: schemas.UserCreate,
-    db: Annotated[Session, Depends(get_db)],                  
+    db: Annotated[Session, Depends(get_db)] = None,                  
 ):
     """Register a user with a hashed password."""
     if not user_in.password:
@@ -82,7 +82,7 @@ def register_user(
 @router.post("/login", response_model=schemas.TokenResponse)
 async def login_user(
     request: Request,
-    db: Annotated[Session, Depends(get_db)],                  
+    db: Annotated[Session, Depends(get_db)] = None,                  
 ):
     """Authenticate a user and return a JWT access token.
 
@@ -120,7 +120,7 @@ def check_id(request: schemas.CheckIdRequest, db: Annotated[Session, Depends(get
 @router.post("/register-password")
 def register_password(
     request: schemas.PasswordRequest,
-    db: Annotated[Session, Depends(get_db)],                  
+    db: Annotated[Session, Depends(get_db)] = None,                  
 ):
     """Set the initial password for a pre-created employee account."""
     user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
@@ -143,7 +143,7 @@ def register_password(
 @router.post("/login-password", response_model=schemas.TokenResponse)
 def login_password(
     request: schemas.PasswordRequest,
-    db: Annotated[Session, Depends(get_db)],                  
+    db: Annotated[Session, Depends(get_db)] = None,                  
 ):
     """Authenticate the frontend employee-ID password flow and return a JWT."""
     user = crud.authenticate_user(
@@ -163,7 +163,7 @@ def login_password(
 @router.post("/reset-password")
 def reset_password(
     request: schemas.ResetPasswordRequest,
-    db: Annotated[Session, Depends(get_db)],   
+    db: Annotated[Session, Depends(get_db)] = None,   
 ):
     """Reset an existing employee account password."""
     user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
@@ -192,8 +192,8 @@ def logout_user(_: User = Depends(get_current_user)):
 
 @router.get("/users", response_model=list[schemas.UserRead])
 def list_users(
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """List active users for the admin account management page."""
     _require_admin(current_user)
@@ -203,8 +203,8 @@ def list_users(
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(
     user_id: int,
-    db: Annotated[Session, Depends(get_db)],                  
-    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Soft delete a user account from the admin account management page."""
     _require_admin(current_user)
