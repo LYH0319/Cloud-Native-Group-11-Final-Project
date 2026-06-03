@@ -178,14 +178,19 @@ export const DeveloperAddRESTfulAPI = () => {
             ))
           )}
         </div>
-        <label className="form-label">Headers JSON</label>
+        <label htmlFor="headers-json" className="form-label">
+          Headers JSON
+        </label>
         <textarea
+          id="headers-json"
           className="form-control mb-2"
           rows={4}
           value={headersJson}
           onChange={(e) => setHeadersJson(e.target.value)}
         />
-        <label className="form-label">Body JSON</label>
+        <label htmlFor="body-json" className="form-label">
+          Body JSON
+        </label>
         <textarea
           className="form-control mb-3"
           rows={6}
