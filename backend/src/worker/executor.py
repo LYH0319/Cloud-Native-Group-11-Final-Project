@@ -149,6 +149,8 @@ def report_to_database(
     error_message: str | None = None,
     log_path: str | None = None,
     log_size: int | None = None,
+    duration: float | int | None = None,
+    retry_count: int | None = None,
 ):
     """
     呼叫 沅籈 寫好的 update_execution_status 函式。
@@ -174,6 +176,8 @@ def report_to_database(
                     error_message=error_message,
                     log_path=log_path,
                     log_size=log_size,
+                    duration=duration,
+                    retry_count=retry_count,
                 ),
             )
             updated_record = result[0] if result is not None else None
@@ -230,6 +234,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
     error_msg = None
     log_path = None
     log_size = None
+    duration = None
+    retry_count = None
 
     try:
         # 3. 根據 task_type 進行分流執行
@@ -248,6 +254,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
         }
         final_status = status_map.get(result["status"], ExecutionStatus.FAILED)
         error_msg = result.get("error_message")
+        duration = result.get("duration")
+        retry_count = result.get("retry_count")
         if "log" in result and result["log"] is not None:
             log_path, log_size = write_execution_log(task.execution_id, result["log"])
 
@@ -271,6 +279,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             error_message=error_msg,
             log_path=log_path,
             log_size=log_size,
+            duration=duration,
+            retry_count=retry_count,
         )
         logger.info(f"任務處理完成，已釋放資源 - Execution ID: {task.execution_id}")
 

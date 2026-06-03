@@ -262,6 +262,7 @@ def rerun_execution(
         db=db,
         job_id=job.job_id,
         trigger_type=TriggerType.MANUAL,
+        retry_count=execution.retry_count + 1,
     )
     dispatch_info = dispatch_task(
         execution_id=new_execution.execution_id,

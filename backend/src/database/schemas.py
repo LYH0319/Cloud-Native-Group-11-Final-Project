@@ -333,7 +333,7 @@ class ExecutionWorkerUpdate(BaseModel):
     worker_id: str = Field(..., max_length=50)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    duration: Optional[int] = Field(default=None, ge=0)
+    duration: Optional[float] = Field(default=None, ge=0)
     retry_count: Optional[int] = Field(default=None, ge=0)
     error_message: Optional[str] = Field(default=None, max_length=4000)
 
