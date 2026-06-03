@@ -1,3 +1,5 @@
+import math
+
 from sqlalchemy.orm import Session
 from sqlalchemy import asc, desc, select, func
 from croniter import croniter
@@ -536,7 +538,30 @@ def purge_old_deleted_jobs(db: Session, retention_days: int = 30) -> int:
 # ==========================================
 
 
-def create_execution(db: Session, job_id: int, trigger_type: TriggerType) -> Execution:
+def elapsed_seconds(start_time: datetime, end_time: datetime) -> int:
+    """Return elapsed seconds rounded up so short completed runs do not show as 0."""
+    start_time_utc = (
+        start_time.replace(tzinfo=timezone.utc)
+        if start_time.tzinfo is None
+        else start_time
+    )
+    end_time_utc = (
+        end_time.replace(tzinfo=timezone.utc)
+        if end_time.tzinfo is None
+        else end_time
+    )
+    seconds = (end_time_utc - start_time_utc).total_seconds()
+    if seconds < 0:
+        return 0
+    return max(1, math.ceil(seconds))
+
+
+def create_execution(
+    db: Session,
+    job_id: int,
+    trigger_type: TriggerType,
+    retry_count: int = 0,
+) -> Execution:
     """
     Creates a new execution record for a specific job.
 
@@ -552,7 +577,11 @@ def create_execution(db: Session, job_id: int, trigger_type: TriggerType) -> Exe
     Returns:
         Execution: The newly created execution object.
     """
-    new_exec = Execution(job_id=job_id, trigger_type=trigger_type)
+    new_exec = Execution(
+        job_id=job_id,
+        trigger_type=trigger_type,
+        retry_count=retry_count,
+    )
     db.add(new_exec)
     db.commit()
     db.refresh(new_exec)
@@ -720,13 +749,7 @@ def update_execution_status(
             exec_record.error_message = error_message
 
         if exec_record.start_time:
-            start_time_utc = (
-                exec_record.start_time.replace(tzinfo=timezone.utc)
-                if exec_record.start_time.tzinfo is None
-                else exec_record.start_time
-            )
-            duration_td = now_utc - start_time_utc
-            exec_record.duration = int(duration_td.total_seconds())
+            exec_record.duration = elapsed_seconds(exec_record.start_time, now_utc)
 
     db.commit()
     db.refresh(exec_record)
@@ -778,19 +801,9 @@ def report_execution_result(  # noqa: C901
         exec_record.end_time = now_utc
 
     if report.duration is not None:
-        exec_record.duration = report.duration
+        exec_record.duration = max(1, math.ceil(report.duration))
     elif exec_record.start_time and exec_record.end_time:
-        start_time_utc = (
-            exec_record.start_time.replace(tzinfo=timezone.utc)
-            if exec_record.start_time.tzinfo is None
-            else exec_record.start_time
-        )
-        end_time_utc = (
-            exec_record.end_time.replace(tzinfo=timezone.utc)
-            if exec_record.end_time.tzinfo is None
-            else exec_record.end_time
-        )
-        exec_record.duration = int((end_time_utc - start_time_utc).total_seconds())
+        exec_record.duration = elapsed_seconds(exec_record.start_time, exec_record.end_time)
 
     log_reference = None
     if report.log_path is not None:

@@ -937,6 +937,59 @@ def test_operator_can_change_job_status(client, api_db_session):
     assert response.json()["status"] == "Disabled"
 
 
+@patch("src.api.routers.history.dispatch_task")
+def test_operator_rerun_increments_retry_count(
+    mock_dispatch,
+    client,
+    api_db_session,
+):
+    owner = _create_default_job_owner(api_db_session)
+    operator = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_operator_rerun",
+            username="ApiOperatorRerun",
+            role=UserRole.OPERATOR,
+        ),
+    )
+    job = crud.create_job(
+        db=api_db_session,
+        owner_id=owner.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Rerun Source",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/rerun-source",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    execution = crud.create_execution(
+        db=api_db_session,
+        job_id=job.job_id,
+        trigger_type=TriggerType.MANUAL,
+        retry_count=2,
+    )
+    mock_dispatch.return_value = {
+        "queued": True,
+        "queue_name": "job_priority_queue",
+        "task_payload": {
+            "execution_id": execution.execution_id + 1,
+            "job_id": job.job_id,
+            "task_type": "http",
+            "payload": {},
+            "timeout_threshold": 60,
+        },
+    }
+
+    response = client.post(
+        f"/api/executions/{execution.execution_id}/rerun",
+        headers=_auth_headers_for_user(operator),
+    )
+
+    assert response.status_code == 201
+    assert response.json()["execution"]["retry_count"] == 3
+    mock_dispatch.assert_called_once()
+
+
 def test_get_job_detail_returns_authenticated_users_job(client, api_db_session):
     job = _create_job(api_db_session, "api_detail_owner")
 

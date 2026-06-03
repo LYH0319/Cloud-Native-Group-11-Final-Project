@@ -517,6 +517,33 @@ def test_create_execution_success(db_session):
     assert result.retry_count == 0
 
 
+def test_create_execution_accepts_retry_count(db_session):
+    """Test creating a rerun execution can carry retry metadata."""
+    user = schemas.UserCreate(
+        employee_id="0018_retry", username="RetryRunner", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    created_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Retry Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    result = crud.create_execution(
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
+        retry_count=3,
+    )
+
+    assert result.retry_count == 3
+
+
 def test_get_executions_by_job_id(db_session):
     """Test retrieving execution history for a specific job."""
     # Arrange
@@ -856,6 +883,43 @@ def test_report_execution_result_with_log_reference(db_session):
     assert log_reference.execution_id == exec_record.execution_id
     assert log_reference.log_path == "logs/executions/report-task.log"
     assert log_reference.log_size == 2048
+
+
+def test_report_execution_result_rounds_short_duration_up(db_session):
+    """Test worker result reporting does not store sub-second executions as 0 seconds."""
+    user = schemas.UserCreate(
+        employee_id="0021_duration", username="DurationUser", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    created_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Duration Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    exec_record = crud.create_execution(
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
+    )
+
+    result = crud.report_execution_result(
+        db=db_session,
+        execution_id=exec_record.execution_id,
+        report=schemas.ExecutionWorkerUpdate(
+            status=ExecutionStatus.SUCCESS,
+            worker_id="node-duration",
+            duration=0.2,
+        ),
+    )
+
+    assert result is not None
+    updated_exec, _ = result
+    assert updated_exec.duration == 1
 
 
 def test_report_execution_result_rejects_mismatched_job_id(db_session):

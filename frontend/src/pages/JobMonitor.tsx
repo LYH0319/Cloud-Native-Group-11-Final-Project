@@ -10,6 +10,7 @@ import {
 } from '../api';
 import { type BackendJob, type ExecutionRecord } from '../types/types';
 import { operatorStyles } from './Style';
+import './JobMonitor.css';
 
 type Scope = 'developer' | 'operator';
 
@@ -38,6 +39,11 @@ const formatDate = (value?: string | null) => {
 
 const latestExecution = (items: ExecutionRecord[] = []) => items[0] || null;
 
+const formatDuration = (duration?: number | null) => {
+  if (duration === null || duration === undefined) return '-';
+  return `${duration} 秒`;
+};
+
 const executionRows = (execution: ExecutionRecord) =>
   [
     ['Execution ID', execution.execution_id],
@@ -47,9 +53,9 @@ const executionRows = (execution: ExecutionRecord) =>
     ['排入時間', formatDate(execution.created_at)],
     ['開始時間', formatDate(execution.start_time)],
     ['結束時間', formatDate(execution.end_time)],
-    ['執行秒數', execution.duration ?? '-'],
+    ['執行時間', formatDuration(execution.duration)],
     ['Worker', execution.worker_id || '-'],
-    ['重試次數', execution.retry_count],
+    ['Retry 次數', execution.retry_count],
     ['錯誤訊息', execution.error_message || '-']
   ] as const;
 
@@ -173,8 +179,8 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
   return (
     <div style={operatorStyles.container}>
       <div style={operatorStyles.dashboardCard}>
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <div>
+        <div className="job-monitor-header mb-3">
+          <div className="job-monitor-heading">
             <h2 style={operatorStyles.title}>
               {isOperator ? '維運人員專區 / 維運監控儀表板' : '內部開發者專區 / 我的 Job'}
             </h2>
@@ -193,7 +199,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
         </div>
 
         <div className="row g-2 mb-3">
-          <div className="col-md-3">
+          <div className="col-12 col-md-3">
             <input
               className="form-control"
               placeholder="搜尋名稱、Endpoint、ID"
@@ -201,7 +207,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
-          <div className="col-md-3">
+          <div className="col-12 col-sm-4 col-md-3">
             <select
               className="form-select"
               value={jobStatusFilter}
@@ -213,7 +219,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               <option value="Deleted">Deleted</option>
             </select>
           </div>
-          <div className="col-md-3">
+          <div className="col-12 col-sm-4 col-md-3">
             <select
               className="form-select"
               value={scheduleFilter}
@@ -224,7 +230,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               <option value="Recurring">Recurring</option>
             </select>
           </div>
-          <div className="col-md-3">
+          <div className="col-12 col-sm-4 col-md-3">
             <select
               className="form-select"
               value={resultFilter}
@@ -243,7 +249,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
 
         {message && <div className="alert alert-info py-2">{message}</div>}
 
-        <div className="table-responsive">
+        <div className="table-responsive job-monitor-table">
           <table style={operatorStyles.jobTable}>
             <thead>
               <tr>
@@ -253,6 +259,8 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
                 <th style={operatorStyles.th}>排程</th>
                 <th style={operatorStyles.th}>Job 狀態</th>
                 <th style={operatorStyles.th}>最新結果</th>
+                <th style={operatorStyles.th}>執行時間</th>
+                <th style={operatorStyles.th}>Retry</th>
                 <th style={operatorStyles.th}>下次執行</th>
                 <th style={{ ...operatorStyles.th, width: '160px' }}>操作</th>
               </tr>
@@ -287,6 +295,8 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
                         '尚無結果'
                       )}
                     </td>
+                    <td style={operatorStyles.td}>{formatDuration(latest?.duration)}</td>
+                    <td style={operatorStyles.td}>{latest?.retry_count ?? '-'}</td>
                     <td style={operatorStyles.td}>{formatDate(job.next_run_time)}</td>
                     <td style={operatorStyles.td}>
                       <div className="d-flex flex-wrap gap-1">
@@ -310,7 +320,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               })}
               {filteredJobs.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ ...operatorStyles.td, textAlign: 'center' }}>
+                  <td colSpan={10} style={{ ...operatorStyles.td, textAlign: 'center' }}>
                     目前沒有符合條件的 Job。
                   </td>
                 </tr>
@@ -318,33 +328,73 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
             </tbody>
           </table>
         </div>
+
+        <div className="job-monitor-cards">
+          {filteredJobs.map((job) => {
+            const latest = latestExecution(executionsByJob[job.job_id]);
+            return (
+              <article className="job-monitor-card" key={job.job_id}>
+                <div className="job-monitor-card-title">
+                  <div>
+                    <span className="job-monitor-card-id">#{job.job_id}</span>
+                    <h3>{job.job_name}</h3>
+                  </div>
+                  <span className="job-monitor-pill">{job.status}</span>
+                </div>
+                <div className="job-monitor-endpoint">
+                  <span style={operatorStyles.badge(job.method)}>{job.method}</span>
+                  <span>{job.endpoint}</span>
+                </div>
+                <dl className="job-monitor-meta">
+                  <div>
+                    <dt>排程</dt>
+                    <dd>{job.schedule_type}</dd>
+                  </div>
+                  <div>
+                    <dt>最新結果</dt>
+                    <dd>{latest?.status || '尚無結果'}</dd>
+                  </div>
+                  <div>
+                    <dt>執行時間</dt>
+                    <dd>{formatDuration(latest?.duration)}</dd>
+                  </div>
+                  <div>
+                    <dt>Retry</dt>
+                    <dd>{latest?.retry_count ?? '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>下次執行</dt>
+                    <dd>{formatDate(job.next_run_time)}</dd>
+                  </div>
+                </dl>
+                <div className="job-monitor-card-actions">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={job.status !== 'Active'}
+                    onClick={() => handleTrigger(job.job_id)}
+                  >
+                    手動觸發
+                  </button>
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => openResultModal(job)}
+                  >
+                    顯示結果
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {filteredJobs.length === 0 && (
+            <div className="job-monitor-empty">目前沒有符合條件的 Job。</div>
+          )}
+        </div>
       </div>
 
       {modalJob && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-            zIndex: 1000
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '8px',
-              width: 'min(900px, 100%)',
-              maxHeight: '85vh',
-              overflow: 'auto',
-              padding: '24px',
-              boxShadow: '0 8px 30px rgba(0,0,0,0.2)'
-            }}
-          >
-            <div className="d-flex justify-content-between align-items-start mb-3">
+        <div className="job-monitor-modal-backdrop">
+          <div className="job-monitor-modal">
+            <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
               <div>
                 <h3 style={{ margin: 0 }}>{modalJob.job_name}</h3>
                 <div style={operatorStyles.detailText}>
@@ -357,15 +407,15 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
             </div>
 
             <div className="row g-3 mb-3">
-              <div className="col-md-4">
+              <div className="col-12 col-md-4">
                 <strong>Job 狀態</strong>
                 <div>{modalJob.status}</div>
               </div>
-              <div className="col-md-4">
+              <div className="col-12 col-md-4">
                 <strong>最新結果</strong>
                 <div>{modalLatest?.status || '尚無結果'}</div>
               </div>
-              <div className="col-md-4">
+              <div className="col-12 col-md-4">
                 <strong>Job 建立時間</strong>
                 <div>{formatDate(modalJob.created_at)}</div>
               </div>
@@ -374,16 +424,18 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
             {modalLatest && (
               <div className="mb-3">
                 <strong>Execution 資訊</strong>
-                <table className="table table-sm mt-2 mb-0">
-                  <tbody>
-                    {executionRows(modalLatest).map(([label, value]) => (
-                      <tr key={label}>
-                        <th style={{ width: '140px' }}>{label}</th>
-                        <td>{value}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="table-responsive">
+                  <table className="table table-sm mt-2 mb-0">
+                    <tbody>
+                      {executionRows(modalLatest).map(([label, value]) => (
+                        <tr key={label}>
+                          <th style={{ width: '140px' }}>{label}</th>
+                          <td>{value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
