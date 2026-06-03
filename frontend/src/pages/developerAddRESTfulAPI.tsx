@@ -1,40 +1,52 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
-import { type User, type JobBody } from '../types/types';
+import { createJob } from '../api';
+import { type JobBody, type JobCreatePayload } from '../types/types';
+
+type HttpMethod = JobCreatePayload['method'];
+type ScheduleType = JobCreatePayload['schedule_type'];
 
 export const DeveloperAddRESTfulAPI = () => {
-  const [method, setMethod] = useState('POST');
-  const [endpoint, setEndpoint] = useState('');
-  const [jsonBody, setJsonBody] = useState(
-    '{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}'
-  );
+  const [jobName, setJobName] = useState('REST API Job');
+  const [method, setMethod] = useState<HttpMethod>('GET');
+  const [endpoint, setEndpoint] = useState('http://backend:8000/api/health');
+  const [scheduleType, setScheduleType] = useState<ScheduleType>('One-time');
+  const [cronExpression, setCronExpression] = useState('*/5 * * * *');
+  const [headersJson, setHeadersJson] = useState('{}');
+  const [bodyJson, setBodyJson] = useState('{}');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const user: User = JSON.parse(localStorage.getItem('user') || '{}');
 
   const handleSubmit = async () => {
     try {
-      const parsedBody: JobBody = JSON.parse(jsonBody);
-      const payload = {
+      setLoading(true);
+      const headers = JSON.parse(headersJson || '{}') as Record<string, unknown>;
+      const body = JSON.parse(bodyJson || '{}') as JobBody;
+      const payload: JobCreatePayload = {
+        job_name: jobName,
         method,
         endpoint,
-        headers: { 'Content-Type': 'application/json' },
-        body: parsedBody
+        schedule_type: scheduleType,
+        headers,
+        body
       };
 
-      const res = await fetch('http://localhost:8000/api/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-emp-id': user.id
-        },
-        body: JSON.stringify(payload)
-      });
+      if (scheduleType === 'Recurring') {
+        payload.cron_expression = cronExpression;
+      }
+
+      const res = await createJob(payload);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || '建立失敗');
+      }
       alert(data.message || '建立成功');
+      navigate('/developer');
     } catch (err) {
-      alert('JSON 格式錯誤或連線失敗！');
+      alert(err instanceof Error ? err.message : 'JSON 格式錯誤或連線失敗');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -42,9 +54,8 @@ export const DeveloperAddRESTfulAPI = () => {
     <div className="bg-light min-vh-100">
       <div style={Styles.styles.header}>
         <span>Job scheduler System</span>
-
-        <div className="d-flex flex-column align-item-center">
-          <div className="d-flex flex-raw">
+        <div className="d-flex flex-column align-items-end">
+          <div className="d-flex gap-2">
             <button
               className="btn btn-light btn-sm px-3 mb-2"
               onClick={() => navigate('/developer')}
@@ -64,36 +75,78 @@ export const DeveloperAddRESTfulAPI = () => {
         </div>
       </div>
 
-      <div className="container mt-4">
+      <div className="container mt-4" style={{ maxWidth: '760px' }}>
         <h4>新增 RESTful API 任務</h4>
+        <input
+          type="text"
+          className="form-control mb-2"
+          placeholder="Job name"
+          value={jobName}
+          onChange={(e) => setJobName(e.target.value)}
+        />
         <div className="row">
-          <div>
-            <input
-              type="text"
-              className="form-control mb-2"
-              placeholder="Method (ex: POST)"
+          <div className="col-md-4">
+            <select
+              className="form-select mb-2"
               value={method}
-              onChange={(e) => setMethod(e.target.value)}
-            />
+              onChange={(e) => setMethod(e.target.value as HttpMethod)}
+            >
+              <option value="GET">GET</option>
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+          </div>
+          <div className="col-md-8">
             <input
               type="text"
               className="form-control mb-2"
-              placeholder="Endpoint (ex: /v1/run)"
+              placeholder="Endpoint URL"
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
             />
-            <textarea
-              className="form-control mb-2"
-              rows={6}
-              placeholder={`填入 JobBody JSON，例如:\n{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}`}
-              value={jsonBody}
-              onChange={(e) => setJsonBody(e.target.value)}
-            />
-            <button onClick={handleSubmit} className="btn btn-success">
-              註冊 Job
-            </button>
           </div>
         </div>
+        <div className="row">
+          <div className="col-md-4">
+            <select
+              className="form-select mb-2"
+              value={scheduleType}
+              onChange={(e) => setScheduleType(e.target.value as ScheduleType)}
+            >
+              <option value="One-time">One-time</option>
+              <option value="Recurring">Recurring</option>
+            </select>
+          </div>
+          <div className="col-md-8">
+            <input
+              type="text"
+              className="form-control mb-2"
+              placeholder="Cron expression"
+              value={cronExpression}
+              disabled={scheduleType !== 'Recurring'}
+              onChange={(e) => setCronExpression(e.target.value)}
+            />
+          </div>
+        </div>
+        <label className="form-label">Headers JSON</label>
+        <textarea
+          className="form-control mb-2"
+          rows={4}
+          value={headersJson}
+          onChange={(e) => setHeadersJson(e.target.value)}
+        />
+        <label className="form-label">Body JSON</label>
+        <textarea
+          className="form-control mb-3"
+          rows={6}
+          value={bodyJson}
+          onChange={(e) => setBodyJson(e.target.value)}
+        />
+        <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
+          {loading ? '建立中...' : '註冊 REST API Job'}
+        </button>
       </div>
     </div>
   );

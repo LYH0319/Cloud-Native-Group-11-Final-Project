@@ -4,7 +4,9 @@ import { Admin } from './pages/admin';
 import { DeveloperHome } from './pages/developerHome';
 import { DeveloperAddRESTfulAPI } from './pages/developerAddRESTfulAPI';
 import { DeveloperAddShellScript } from './pages/developerAddShellScript';
+import { DeveloperJobs } from './pages/developerJobs';
 import { Operator } from './pages/operator';
+import { TestCreateUser } from './pages/testCreateUser';
 import { RouteGuard } from './components/routeGuard';
 
 const App = () => {
@@ -12,6 +14,7 @@ const App = () => {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/test/create-user" element={<TestCreateUser />} />
 
         <Route
           path="/admin"
@@ -43,6 +46,14 @@ const App = () => {
           element={
             <RouteGuard allowedRole="developer">
               <DeveloperAddShellScript />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/jobs"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperJobs />
             </RouteGuard>
           }
         />

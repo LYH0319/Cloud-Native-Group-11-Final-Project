@@ -60,12 +60,16 @@ def compute_next_recurring_run_time(
 
 def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
     """Serialize a Job into the worker task payload shape."""
+    headers = job.headers or {}
+    body = job.body or {}
+    task_type = headers.get("task_type") or body.get("task_type") or "http"
     return {
         "job_id": job.job_id,
         "method": job.method.value,
         "endpoint": job.endpoint,
-        "headers": job.headers or {},
-        "body": job.body or {},
+        "headers": headers,
+        "body": body,
+        "task_type": task_type,
         "timeout": timeout,
     }
 

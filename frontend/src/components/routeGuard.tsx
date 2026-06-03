@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { type User, type Role } from '../types/types';
+import { getStoredUser } from '../api';
 
 interface RouteGuardProps {
   children: React.ReactNode;
@@ -8,7 +9,7 @@ interface RouteGuardProps {
 }
 
 export const RouteGuard = ({ children, allowedRole }: RouteGuardProps) => {
-  const userData = localStorage.getItem('user');
+  const userData = getStoredUser();
 
   if (!userData) {
     alert('Please login first!');
@@ -19,7 +20,7 @@ export const RouteGuard = ({ children, allowedRole }: RouteGuardProps) => {
     );
   }
 
-  const user: User = JSON.parse(userData);
+  const user: User = userData;
 
   if (allowedRole && user.role !== allowedRole) {
     alert(`Permission denied! This page is only accessible to ${allowedRole}.`);
