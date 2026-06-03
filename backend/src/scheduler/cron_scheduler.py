@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import select
 
@@ -20,10 +20,12 @@ from src.database.models import (
 
 # 3. 引入crud.py的邏輯函式
 from src.database.crud import (
+    as_utc_naive,
     compute_next_recurring_run_time,
     create_execution,
     get_active_jobs,
     job_to_task_dict,
+    utc_now,
 )
 from src.worker.executor import dispatch_task
 
@@ -36,7 +38,7 @@ def recover_stale_executions(
     dispatch_fn=dispatch_task,
 ) -> list[Execution]:
     """Mark stale running executions timed out and retry eligible jobs."""
-    now_utc = now_utc or datetime.now(timezone.utc)
+    now_utc = as_utc_naive(now_utc) or utc_now()
     stale_after = stale_after_seconds or settings.HEARTBEAT_TIMEOUT
     retry_limit = settings.MAX_EXECUTION_RETRIES if max_retries is None else max_retries
     cutoff = now_utc - timedelta(seconds=stale_after)
@@ -63,7 +65,7 @@ def recover_stale_executions(
         if execution.start_time:
             execution.duration = max(
                 1,
-                int((now_utc - execution.start_time.replace(tzinfo=timezone.utc)).total_seconds()),
+                int((now_utc - as_utc_naive(execution.start_time)).total_seconds()),
             )
         db.commit()
         db.refresh(execution)
@@ -135,7 +137,7 @@ def start_cron_scheduler(db_session_factory: sessionmaker = SessionLocal):
         db: Session = db_session_factory()
         try:
             # 統一取得當下的 UTC 時間
-            now_utc = datetime.now(timezone.utc)
+            now_utc = utc_now()
 
             recover_stale_executions(db=db, now_utc=now_utc)
 

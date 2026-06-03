@@ -1,314 +1,367 @@
-# Cloud-Native-Group-11-Final-Project
+# Cloud-Native Group 11 Final Project
 
-## 👥 小組分工 (Team & Responsibilities)
-| 姓名 / GitHub | 學號 | 主要負責模組 / 職責 |
-| :--- | :--- | :--- |
-| **謝羽媞** (@yosoramagician) | 112062315 | 前端 UI 介面設計、使用者註冊 / 登入、Job 管理 |
-| **李沅籈** (@stellae2718) | 112062207 | CI/CD、排程規則設定、資料庫設定 |
-| **謝絜淩** (@Chiehling0214) | 112062220 | 執行結果回報、執行歷史查詢、手動觸發 |
-| **廖宇嬅** (@LYH0319) | 112062301 | 任務執行、長時間任務處理 |
-| **蔡佳倩** (@chien1201) | 112062308 | 任務派發、任務相依性管理、Job 註冊 |
+本專案是一個雲原生任務排程與執行系統，採前後端分離架構。前端使用 React + TypeScript + Vite，後端使用 FastAPI，並透過 MySQL、Redis、Scheduler 與 Worker 完成 Job 建立、排程、派發、執行、紀錄與查詢。
 
-## 🛠️ CI/CD 本地測試指南 (Local CI/CD Testing)
+## 快速啟動整個專案
 
-目前 CI 包含兩個測試流程。
+建議使用 Docker Compose 一次啟動完整前後端與基礎服務。
 
-### ci-frontend
-- on:
-  - push with changes in frontend/
-  - pull request
-- including:
-  - typecheck
-  - prettier check
-  - test & test report
+### 1. 前置需求
 
-### ci-backend
-- on:
-  - push with changes in backend/
-  - pull request
-- including:
-  - flake8
-  - pytest
+- Docker Desktop
+- Git
+- 若要本機開發前端，需要 Node.js 與 npm
+- 若要本機開發後端，需要 Python 3.10 以上
 
-### cd
-目前只是初步範例，尚未完整測試。
+### 2. 準備後端環境變數
 
-- on:
-  - push to release/ branch
-
-### local ci test
-1. 確保電腦已安裝並啟動 **Docker Desktop**
-2. 安裝 `act` 工具
-3. 執行本地測試命令：
-
-    ```bash
-    # 模擬 Git Push 事件，完整跑一遍前後端 CI 流程
-    act push
-
-    # 單獨測試前端或後端 workflow
-    act -W .github/workflows/ci-frontend.yaml
-    act -W .github/workflows/ci-backend.yaml
-    ```
-
-4. local ci test 如果 fail 在 `Test report` 是正常的，可以直接 push。
-
-### backend test
-後端測試已依照測試類型拆成 `unit` 與 `integration`，也可以用 pytest marker 分開執行。
+在專案根目錄確認 `backend/.env` 存在。若尚未建立，可由範例檔複製：
 
 ```bash
-cd backend
-
-# 跑全部 backend tests：auth、job、execution、scheduler、worker、CRUD、utils
-pytest
-
-# 只跑 unit tests：單一模組或單一層級邏輯，外部服務以 fixture/mock 隔離
-pytest -m unit
-
-# 只跑 integration tests：API + DB、scheduler + dispatch、worker + execution flow
-pytest -m integration
-
-# 排除 integration tests：快速檢查大多數純邏輯與資料層測試
-pytest -m "not integration"
-
-# 直接指定 unit 測試資料夾：等同集中跑單元測試檔
-pytest tests/unit
-
-# 直接指定 integration 測試資料夾：等同集中跑整合流程測試檔
-pytest tests/integration
-
-# CI 使用的語法級 flake8 檢查：只檢查會造成執行失敗的錯誤類型
-python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+copy backend\.env.example backend\.env
 ```
 
-## 🛠️ database CRUD 使用指南
-
-目前已完成 User、Job、Execution、JobDependency、LogReference 相關 CRUD 功能。
-若需使用，請直接從 `src.database.crud` 引入對應函式。
-
-### 使用建議
-- 請務必將 `db: Session` 作為第一個參數傳入。
-- 涉及狀態變更的操作，請優先使用商業邏輯導向的函式，例如 `change_job_status()`、`update_execution_status()`、`report_execution_result()`。
-- Scheduler 與 Worker 應直接使用 database/service/CRUD 函式，不需要透過 HTTP API 更新內部狀態。
-- 若需新增測試，請參考 `backend/tests/` 內既有測試的 Arrange-Act-Assert 結構。
-
-### 新增功能
-如果要請求新增 CRUD 功能，請複製並填寫以下內容：
+Docker Compose 會使用 `backend/.env` 啟動 MySQL 與後端服務。Docker 環境中的 `DATABASE_URL` 應指向 Compose service name `db`，例如：
 
 ```text
-功能名稱：（例如：查詢某個時間區間內的執行紀錄）
-目標資料表：（例如：Execution）
-參數需求：（需要輸入什麼資料？回傳什麼結果？）
-商業邏輯：（是否有特殊的篩選條件或狀態轉換？）
-優先級：（High / Medium / Low）
+DATABASE_URL=mysql+pymysql://api_worker:PASSWORD_group11@db:3306/job_scheduler
 ```
 
-## 📂 專案開發目錄架構 Project Directory Structure
+### 3. 啟動完整服務
 
-本專案採前後端分離架構，後端以 FastAPI、MySQL、Redis、Scheduler、Worker 組成完整任務排程與執行流程；前端資料夾包含正式前端與一個開發測試用的單檔模擬前端。
-
-```text
-Cloud-Native-Group-11-Final-Project/
-│
-├── .github/                         # GitHub Actions CI/CD 設定
-│   └── workflows/
-│       ├── ci-frontend.yaml
-│       ├── ci-backend.yaml
-│       └── cd.yaml
-│
-├── docker-compose.yml               # 本地一鍵啟動 frontend/backend/db/redis/worker/scheduler
-├── README.md                        # 專案說明與啟動方式
-├── CONTRIBUTING.md                  # 協作規範
-├── logs/                            # Worker 執行日誌掛載目錄
-│
-├── frontend/                        # TypeScript / Vite 前端
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── index.html
-│   ├── backend-flow-test.html       # 開發測試用模擬前端，可測 auth/job/trigger/history/logs
-│   ├── public/
-│   │   ├── favicon.svg
-│   │   └── icons.svg
-│   ├── src/
-│   │   ├── main.ts
-│   │   ├── style.css
-│   │   ├── counter.ts
-│   │   └── assets/
-│   └── tests/
-│       └── test_dummy.test.ts
-│
-└── backend/                         # Python / FastAPI 後端
-    ├── Dockerfile                   # FastAPI API service image
-    ├── Dockerfile.worker            # Worker / Scheduler service image
-    ├── requirements.txt
-    ├── pytest.ini
-    ├── config/
-    │   └── settings.py              # 環境變數與全域設定
-    │
-    ├── src/
-    │   ├── api/
-    │   │   ├── main.py              # FastAPI app、CORS、router 掛載、DB schema compatibility
-    │   │   ├── dependencies.py      # JWT current user dependency
-    │   │   └── routers/
-    │   │       ├── auth.py          # POST /api/auth/register、POST /api/auth/login
-    │   │       ├── jobs.py          # Job 建立、列表、詳情、手動觸發，含 owner 權限檢查
-    │   │       └── history.py       # Execution history、execution detail、logs 查詢
-    │   │
-    │   ├── database/
-    │   │   ├── core.py              # SQLAlchemy engine/session/init_db/schema compatibility
-    │   │   ├── connection.py        # database package 對外相容匯出
-    │   │   ├── models.py            # User、Job、Execution、JobDependency、LogReference
-    │   │   ├── schemas.py           # Pydantic API schemas
-    │   │   └── crud.py              # User/job/execution/dependency/log CRUD 與 business helpers
-    │   │
-    │   ├── scheduler/
-    │   │   └── cron_scheduler.py    # 定期掃描 DB，派發到期任務到 Redis
-    │   │
-    │   ├── worker/
-    │   │   ├── queue_manager.py     # Redis queue 操作
-    │   │   ├── executor.py          # Worker dispatch 與執行流程
-    │   │   ├── schemas.py           # Worker task schemas
-    │   │   └── tasks/
-    │   │       ├── http_task.py     # HTTP 任務執行
-    │   │       └── shell_task.py    # Shell 任務執行
-    │   │
-    │   └── utils/
-    │       ├── cycle_detection.py   # Job dependency DAG cycle detection
-    │       ├── logger.py            # Execution log 寫入與讀取
-    │       └── security.py          # 密碼雜湊、JWT 建立與驗證
-    │
-    └── tests/
-        ├── conftest.py              # 共用 pytest fixtures，建立隔離測試 DB session
-        ├── unit/                    # 單一模組或單一層級測試
-        │   ├── test_auth_dependencies.py # JWT current user dependency 與無效 token/停用使用者
-        │   ├── test_cycle_detection.py   # Job dependency DAG cycle detection
-        │   ├── test_database_crud.py     # User/job/execution/dependency/log CRUD 與 business helpers
-        │   ├── test_database_schemas.py  # Pydantic schema validation edge cases
-        │   ├── test_dummy.py             # CI smoke test
-        │   ├── test_http_task.py         # HTTP task success/failure/timeout/request payload
-        │   ├── test_security.py          # Password hash/verify 與 JWT 建立/解碼/失效
-        │   ├── test_shell_task.py        # Shell task 回傳格式
-        │   ├── test_utils_logger.py      # Execution log 寫入/讀取/路徑保護
-        │   └── test_worker_schemas.py    # Worker TaskPayload/HeartbeatState schema validation
-        ├── integration/             # 跨 API / DB / scheduler / worker 流程測試
-        │   ├── test_api.py                  # Auth、job ownership、manual trigger、history、logs API
-        │   ├── test_scheduler_flow.py       # Scheduler 掃描 job、dependency、dispatch、rollback
-        │   └── test_worker_executor_flow.py # Worker 執行任務、回寫結果、log reference、防重與壞 payload
-        └── helpers/
-            └── manual_redis_dispatch.py # 手動送 Redis 測試任務的開發輔助腳本
-```
-
-## 🚀 本地開啟後端與模擬前端
-
-### 1. 開啟完整後端執行環境
-
-請先確認 Docker Desktop 已啟動，接著在專案根目錄執行：
+在專案根目錄執行：
 
 ```bash
 docker compose up -d --build
 ```
 
-To run multiple workers on the internal Redis/MySQL network:
-
-```bash
-docker compose up -d --build --scale backend-worker=3
-```
-
-`backend-worker` intentionally has no fixed `container_name`, so Compose can create
-multiple replicas. Each worker uses `WORKER_ID` when provided, otherwise the
-container hostname is recorded in `executions.worker_id`. MySQL and Redis are not
-published to the host; they are reachable only from services in the Compose network.
-
 這會啟動：
 
-- `backend`：FastAPI API server，對外 port `8000`
-- `db`：MySQL
-- `redis`：Redis queue
-- `backend-worker`：任務執行 worker
-- `backend-scheduler`：排程掃描與派發服務
-- `frontend`：正式前端容器，對外 port `3000`
+| Service | 說明 | 對外網址 |
+| :--- | :--- | :--- |
+| `frontend` | React/Vite 前端 | `http://localhost:3000` |
+| `backend` | FastAPI 後端 API | `http://localhost:8000` |
+| `db` | MySQL 8.4 | 僅 Compose 內部網路 |
+| `redis` | Redis queue | 僅 Compose 內部網路 |
+| `backend-worker` | 任務執行 Worker | 僅 Compose 內部網路 |
+| `backend-scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
 
-確認後端是否啟動成功：
+開啟前端：
+
+```text
+http://localhost:3000
+```
+
+檢查後端健康狀態：
 
 ```bash
 curl.exe http://localhost:8000/api/health
 ```
 
-正常會看到：
+正常會回傳：
 
 ```json
 {"status":"ok"}
 ```
 
-API 文件：
+FastAPI 文件：
 
 ```text
 http://localhost:8000/docs
 ```
 
-常用 Docker 指令：
+### 4. 常用 Docker 指令
 
 ```bash
-# 查看容器狀態
+# 查看服務狀態
 docker compose ps
+
+# 查看全部 log
+docker compose logs
 
 # 查看後端 log
 docker compose logs backend
 
+# 查看 worker log
+docker compose logs backend-worker
+
+# 重新 build 並啟動
+docker compose up -d --build
+
 # 重啟後端
 docker compose restart backend
 
-# 關閉所有服務
+# 停止所有服務
 docker compose down
 ```
 
-Stale execution recovery demo:
+若要同時啟動多個 worker：
 
-1. Create a long-running shell job, for example `python -c "import time; time.sleep(120)"`.
-2. Trigger it manually and wait until the execution becomes `Running`.
-3. Stop the worker handling it, for example `docker compose stop backend-worker`.
-4. Start the scheduler/worker again and wait longer than `HEARTBEAT_TIMEOUT`.
-5. The scheduler marks the stale execution `Timeout`; if retry budget remains, it creates and dispatches a new execution.
+```bash
+docker compose up -d --build --scale backend-worker=3
+```
 
-如果本地 MySQL volume 是舊 schema，後端啟動時會自動補 auth 需要的 `users.email`、`users.hashed_password` 與 `executions.last_heartbeat` 欄位。
+## 本機開發啟動方式
 
-### 2. 開啟開發測試用模擬前端
+Docker Compose 是完整專案最推薦的啟動方式。若需要分開開發前端或後端，可參考以下流程。
 
-模擬前端是單檔 HTML，用來快速測試目前後端完整流程，不是正式產品前端。
+### 後端本機開發
 
-建議用 local HTTP server 開，不要直接用 `file://` 雙擊打開：
+進入後端目錄：
+
+```bash
+cd backend
+```
+
+安裝套件：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+啟動 API：
+
+```bash
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+注意：
+
+- 後端需要可連線的 MySQL 與 Redis。
+- 若後端在本機直接執行，`DATABASE_URL` 不能使用 Docker 內部 hostname `db`，需改成可從本機連到的 MySQL 位址，例如 `localhost`。
+- 目前 `docker-compose.yml` 沒有把 MySQL 與 Redis port publish 到 host，所以完整本機後端開發時，需要另外開本機 MySQL/Redis，或調整 Compose port 設定。
+
+### 前端本機開發
+
+進入前端目錄：
+
+```bash
+cd frontend
+```
+
+安裝套件：
+
+```bash
+npm install
+```
+
+啟動 Vite：
+
+```bash
+npm run dev
+```
+
+開啟：
+
+```text
+http://localhost:5173
+```
+
+注意：前端 API 使用 `/api`，並透過 `frontend/vite.config.ts` proxy 到後端。Docker 內執行時 target 是 `http://backend:8000`。如果你在本機直接跑 `npm run dev`，需要把 proxy target 改成：
+
+```text
+http://localhost:8000
+```
+
+或使用 Docker Compose 的 `frontend` service，直接開 `http://localhost:3000`。
+
+## 專案開發目錄架構
+
+```text
+Cloud-Native-Group-11-Final-Project/
+|
+|-- .github/
+|   `-- workflows/
+|       |-- ci-backend.yaml          # 後端 CI：flake8、pytest
+|       |-- ci-frontend.yaml         # 前端 CI：typecheck、format check、test
+|       `-- cd.yaml                  # CD workflow 範例
+|
+|-- backend/                         # FastAPI 後端、Scheduler、Worker
+|   |-- config/
+|   |   `-- setting.py               # 後端設定與環境變數
+|   |
+|   |-- src/
+|   |   |-- api/
+|   |   |   |-- main.py              # FastAPI app、CORS、router 掛載、health check
+|   |   |   |-- dependencies.py      # API dependency，例如 current user
+|   |   |   |-- security.py          # API 安全相關輔助
+|   |   |   |-- schemas.py           # API schema 輔助
+|   |   |   `-- routers/
+|   |   |       |-- auth.py          # 註冊、登入、使用者認證
+|   |   |       |-- jobs.py          # Job 建立、查詢、狀態更新、手動觸發
+|   |   |       `-- history.py       # Execution history、rerun、logs 查詢
+|   |   |
+|   |   |-- database/
+|   |   |   |-- core.py              # SQLAlchemy engine/session、DB 初始化
+|   |   |   |-- connection.py        # database 對外相容匯出
+|   |   |   |-- models.py            # User、Job、Execution、Dependency、LogReference
+|   |   |   |-- schemas.py           # Pydantic schemas
+|   |   |   `-- crud.py              # CRUD 與任務業務邏輯 helper
+|   |   |
+|   |   |-- scheduler/
+|   |   |   `-- cron_scheduler.py    # 掃描到期 Job，建立 execution 並派發任務
+|   |   |
+|   |   |-- worker/
+|   |   |   |-- executor.py          # Worker 主流程、任務 dispatch 與回報
+|   |   |   |-- queue_manager.py     # Redis queue 操作
+|   |   |   |-- schemas.py           # Worker payload schema
+|   |   |   `-- tasks/
+|   |   |       |-- http_task.py       # HTTP 任務執行
+|   |   |       `-- shell_task.py    # Shell 任務執行
+|   |   |
+|   |   `-- utils/
+|   |       |-- cycle_detection.py   # Job dependency cycle detection
+|   |       |-- logger.py            # Execution log 寫入與讀取
+|   |       `-- security.py          # 密碼 hash、JWT 建立與驗證
+|   |
+|   |-- tests/
+|   |   |-- unit/                   # 單元測試
+|   |   |-- integration/            # API、DB、Scheduler、Worker 整合測試
+|   |   `-- helpers/                # 手動測試輔助腳本
+|   |
+|   |-- Dockerfile                  # FastAPI backend image
+|   |-- Dockerfile.worker           # Worker / Scheduler image
+|   |-- requirements.txt            # Python dependencies
+|   |-- pytest.ini                  # pytest 設定
+|   |-- .env.example                # 後端環境變數範例
+|   `-- .env                        # 後端實際環境變數，本機不提交敏感資訊
+|
+|-- frontend/                       # React + TypeScript + Vite 前端
+|   |-- public/                     # 靜態資源
+|   |-- src/
+|   |   |-- App.tsx                 # 前端路由與主 app
+|   |   |-- api.ts                  # API 呼叫 helper
+|   |   |-- main.tsx                # React entry
+|   |   |-- index.css               # 全域樣式
+|   |   |-- components/             # 共用元件與 route guard
+|   |   |-- pages/                  # Login、Admin、Operator、Developer、JobMonitor 等頁面
+|   |   |-- types/                  # TypeScript 型別
+|   |   `-- assets/                 # 圖片與前端資源
+|   |
+|   |-- tests/                      # 前端測試
+|   |-- backend-flow-test.html      # 開發用單檔 API flow 測試頁
+|   |-- Dockerfile                  # Frontend image
+|   |-- package.json                # npm scripts 與 dependencies
+|   |-- vite.config.ts              # Vite 設定與 API proxy
+|   |-- vitest.config.ts            # Vitest 設定
+|   `-- tsconfig*.json              # TypeScript 設定
+|
+|-- logs/                           # Worker execution logs 掛載目錄
+|-- docker-compose.yml              # 一次啟動 frontend/backend/db/redis/worker/scheduler
+|-- CONTRIBUTING.md                 # 協作規範
+`-- README.md                       # 專案說明
+```
+
+## 測試與檢查
+
+### 後端測試
+
+```bash
+cd backend
+
+# 全部後端測試
+python -m pytest
+
+# 只跑 unit tests
+python -m pytest -m unit
+
+# 只跑 integration tests
+python -m pytest -m integration
+
+# CI 使用的語法級 flake8 檢查
+python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+```
+
+### 前端測試
+
+```bash
+cd frontend
+
+# TypeScript type check
+npm run typecheck
+
+# Vitest
+npm test
+
+# Prettier check
+npm run format:check
+
+# Production build
+npm run build
+```
+
+## 開發用 API Flow 測試頁
+
+`frontend/backend-flow-test.html` 是開發用的單檔測試頁，可快速測：
+
+- health check
+- 註冊與登入
+- 建立 Job
+- 列出 Job
+- 手動觸發 Job
+- 查詢 execution history
+- 查詢 execution detail 與 logs
+
+啟動方式：
 
 ```bash
 cd frontend
 python -m http.server 5500
 ```
 
-瀏覽器開：
+瀏覽器開啟：
 
 ```text
 http://localhost:5500/backend-flow-test.html
 ```
 
-頁面中的 `API 根路徑` 請填：
+頁面中的 API 根路徑請填：
 
 ```text
 http://localhost:8000/api
 ```
 
-建議測試順序：
+## CI/CD 本地測試
 
-1. 按「檢查後端」
-2. 註冊使用者
-3. 登入取得 JWT
-4. 建立任務
-5. 列出我的任務
-6. 手動觸發任務
-7. 查詢 execution history
-8. 查詢 execution detail 與 logs
+若要用 `act` 模擬 GitHub Actions：
 
-若前端顯示 `Failed to fetch`，請先確認：
+```bash
+# 模擬 push，跑完整 workflow
+act push
 
-- 測試頁是從 `http://localhost:5500/backend-flow-test.html` 開啟
-- API 根路徑是 `http://localhost:8000/api`
-- `http://localhost:8000/api/health` 可以正常回 `{"status":"ok"}`
-- 修改後端程式後已執行 `docker compose restart backend` 或 `docker compose up -d --build backend`
+# 單獨跑前端或後端 workflow
+act -W .github/workflows/ci-frontend.yaml
+act -W .github/workflows/ci-backend.yaml
+```
+
+## 常見問題
+
+### 前端顯示 Failed to fetch
+
+請確認：
+
+- 後端健康檢查 `http://localhost:8000/api/health` 可以回傳 `{"status":"ok"}`
+- Docker Compose 前端請開 `http://localhost:3000`
+- 本機 Vite 前端請確認 `vite.config.ts` proxy target 指到可連線的後端
+
+### 後端連不到資料庫
+
+請確認：
+
+- `backend/.env` 存在
+- Docker Compose 環境的 `DATABASE_URL` host 是 `db`
+- 若後端在本機直接跑，`DATABASE_URL` host 需改成 `localhost` 或其他本機可連的 MySQL 位址
+
+### 修改後端程式後沒有生效
+
+可重啟後端服務：
+
+```bash
+docker compose restart backend
+```
+
+若有 dependency 或 Dockerfile 變更，請重新 build：
+
+```bash
+docker compose up -d --build backend
+```

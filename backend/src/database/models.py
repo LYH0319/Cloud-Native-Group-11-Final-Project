@@ -1,9 +1,14 @@
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, Boolean, JSON, Enum, func, ForeignKey
+from sqlalchemy import String, Integer, Boolean, JSON, Enum, ForeignKey
 from typing import List, Optional, Dict, Any
 from src.database.connection import Base
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utc_now_naive() -> datetime:
+    """Return UTC time as a naive datetime for DATETIME columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ==========================================
 # ENUMS
@@ -94,9 +99,11 @@ class User(Base):
     hashed_password: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True, default=None
     )
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
+    created_at: Mapped[datetime] = mapped_column(
+        insert_default=utc_now_naive, init=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now(), init=False
+        insert_default=utc_now_naive, onupdate=utc_now_naive, init=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -158,9 +165,11 @@ class Job(Base):
     )
 
     # === 4. init=False 區 (不影響排序) ===
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
+    created_at: Mapped[datetime] = mapped_column(
+        insert_default=utc_now_naive, init=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now(), init=False
+        insert_default=utc_now_naive, onupdate=utc_now_naive, init=False
     )
 
     owner: Mapped["User"] = relationship(back_populates="jobs", init=False)
@@ -209,9 +218,11 @@ class JobDependency(Base):
     upstream_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id"))
     downstream_id: Mapped[int] = mapped_column(ForeignKey("jobs.job_id"))
 
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
+    created_at: Mapped[datetime] = mapped_column(
+        insert_default=utc_now_naive, init=False
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), onupdate=func.now(), init=False
+        insert_default=utc_now_naive, onupdate=utc_now_naive, init=False
     )
 
     upstream_job: Mapped["Job"] = relationship(
@@ -274,7 +285,9 @@ class Execution(Base):
         String(4000), nullable=True, default=None
     )
 
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
+    created_at: Mapped[datetime] = mapped_column(
+        insert_default=utc_now_naive, init=False
+    )
 
     job: Mapped["Job"] = relationship(back_populates="executions", init=False)
     log_reference: Mapped[Optional["LogReference"]] = relationship(
@@ -309,7 +322,9 @@ class LogReference(Base):
     log_path: Mapped[str] = mapped_column(String(1024))
     log_size: Mapped[int] = mapped_column(Integer)
 
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), init=False)
+    created_at: Mapped[datetime] = mapped_column(
+        insert_default=utc_now_naive, init=False
+    )
 
     execution: Mapped["Execution"] = relationship(
         back_populates="log_reference", init=False

@@ -24,8 +24,17 @@ from src.utils.security import hash_password, verify_password
 
 
 def utc_now() -> datetime:
-    """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    """Return a naive UTC timestamp for database DATETIME columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def as_utc_naive(value: datetime | None) -> datetime | None:
+    """Normalize aware or naive datetimes to naive UTC before DB writes."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def compute_initial_next_run_time(
@@ -33,7 +42,7 @@ def compute_initial_next_run_time(
     base_time: datetime | None = None,
 ) -> datetime | None:
     """Compute the first scheduler pickup time for a new job."""
-    base = base_time or utc_now()
+    base = as_utc_naive(base_time) or utc_now()
     if job_in.schedule_type == ScheduleType.ONE_TIME:
         return base
 
@@ -55,7 +64,8 @@ def compute_next_recurring_run_time(
     if not cron_expression:
         return None
     try:
-        return croniter(cron_expression, base_time or utc_now()).get_next(datetime)
+        base = as_utc_naive(base_time) or utc_now()
+        return as_utc_naive(croniter(cron_expression, base).get_next(datetime))
     except (CroniterBadCronError, ValueError):
         return None
 
@@ -275,6 +285,8 @@ def create_job(
     depends_on = getattr(job_in, "depends_on", None) or []
     if initialize_next_run_time and next_run_time is None:
         next_run_time = compute_initial_next_run_time(job_in)
+    else:
+        next_run_time = as_utc_naive(next_run_time)
 
     new_job = Job(
         owner_id=owner_id,
@@ -365,7 +377,7 @@ def get_active_jobs(
         list[Job]: A list of job objects ready for execution.
     """
 
-    check_time = target_time if target_time else func.now()
+    check_time = as_utc_naive(target_time) if target_time else utc_now()
 
     conditions = [
         Job.status == JobStatus.ACTIVE,
@@ -530,7 +542,7 @@ def purge_old_deleted_jobs(db: Session, retention_days: int = 30) -> int:
     Returns:
         int: The number of jobs permanently deleted.
     """
-    threshold_time = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    threshold_time = utc_now() - timedelta(days=retention_days)
 
     # Find all jobs that are DELETED and were updated before the threshold time
     jobs_to_delete = db.scalars(
@@ -745,7 +757,7 @@ def update_execution_status(
     if not exec_record:
         return None
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = utc_now()
     exec_record.status = status
 
     if status == ExecutionStatus.RUNNING:
@@ -788,7 +800,7 @@ def refresh_execution_heartbeat(
     if exec_record.status != ExecutionStatus.RUNNING:
         return exec_record
 
-    exec_record.last_heartbeat = heartbeat_time or datetime.now(timezone.utc)
+    exec_record.last_heartbeat = as_utc_naive(heartbeat_time) or utc_now()
     if worker_id:
         exec_record.worker_id = worker_id
     db.commit()
@@ -817,7 +829,7 @@ def report_execution_result(  # noqa: C901
     if report.job_id is not None and report.job_id != exec_record.job_id:
         return None
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = utc_now()
     exec_record.status = report.status
     exec_record.worker_id = report.worker_id
     exec_record.error_message = report.error_message
@@ -826,7 +838,7 @@ def report_execution_result(  # noqa: C901
         exec_record.retry_count = report.retry_count
 
     if report.start_time is not None:
-        exec_record.start_time = report.start_time
+        exec_record.start_time = as_utc_naive(report.start_time)
     elif report.status == ExecutionStatus.RUNNING and exec_record.start_time is None:
         exec_record.start_time = now_utc
 
@@ -834,7 +846,7 @@ def report_execution_result(  # noqa: C901
         exec_record.last_heartbeat = now_utc
 
     if report.end_time is not None:
-        exec_record.end_time = report.end_time
+        exec_record.end_time = as_utc_naive(report.end_time)
     elif report.status in [
         ExecutionStatus.SUCCESS,
         ExecutionStatus.FAILED,
