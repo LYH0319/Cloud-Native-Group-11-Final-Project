@@ -87,8 +87,8 @@ def list_job_executions(
         "execution_id",
     ] = "created_at",
     order_direction: Literal["asc", "desc"] = "desc",
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)] = Depends(),                  
+    current_user: Annotated[User, Depends(get_current_user)] = Depends(),
 ):
     """Return filtered execution history for one job, newest records first."""
     require_owned_job(job_id, db, current_user)
@@ -120,8 +120,8 @@ def list_job_executions(
 )
 def get_execution(
     execution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],                  
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Return one execution record by ID."""
     return require_owned_execution(execution_id, db, current_user)
@@ -141,8 +141,8 @@ def list_executions(
     worker_id: str | None = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)] = Depends(),                  
+    current_user: Annotated[User, Depends(get_current_user)] = Depends(),
 ):
     """Return all execution results for operators/admins."""
     if not can_view_all_results(current_user):
@@ -183,8 +183,8 @@ def list_executions(
 )
 def get_execution_logs(
     execution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],                  
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Return log metadata for one execution without reading file content."""
     require_owned_execution(execution_id, db, current_user)
@@ -202,8 +202,8 @@ def get_execution_logs(
 @router.get("/executions/{execution_id}/logs/content")
 def get_execution_log_content(
     execution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],                  
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Return plain text log content for one execution."""
     require_owned_execution(execution_id, db, current_user)
@@ -241,8 +241,8 @@ def get_execution_log_content(
 )
 def rerun_execution(
     execution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db: Annotated[Session, Depends(get_db)],                  
+    current_user: Annotated[User, Depends(get_current_user)],
 ):
     """Let operators/admins rerun the job behind an execution."""
     if not can_view_all_results(current_user):
@@ -298,7 +298,7 @@ def rerun_execution(
 def report_execution_result(
     execution_id: int,
     update_in: schemas.ExecutionWorkerUpdate,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],                  
 ):
     """Store the structured result reported by a worker after execution."""
     try:
