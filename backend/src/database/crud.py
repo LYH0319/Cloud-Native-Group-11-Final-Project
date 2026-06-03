@@ -24,8 +24,17 @@ from src.utils.security import hash_password, verify_password
 
 
 def utc_now() -> datetime:
-    """Return a timezone-aware UTC timestamp."""
-    return datetime.now(timezone.utc)
+    """Return a naive UTC timestamp for database DATETIME columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def as_utc_naive(value: datetime | None) -> datetime | None:
+    """Normalize aware or naive datetimes to naive UTC before DB writes."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def compute_initial_next_run_time(
@@ -33,7 +42,7 @@ def compute_initial_next_run_time(
     base_time: datetime | None = None,
 ) -> datetime | None:
     """Compute the first scheduler pickup time for a new job."""
-    base = base_time or utc_now()
+    base = as_utc_naive(base_time) or utc_now()
     if job_in.schedule_type == ScheduleType.ONE_TIME:
         return base
 
@@ -55,7 +64,8 @@ def compute_next_recurring_run_time(
     if not cron_expression:
         return None
     try:
-        return croniter(cron_expression, base_time or utc_now()).get_next(datetime)
+        base = as_utc_naive(base_time) or utc_now()
+        return as_utc_naive(croniter(cron_expression, base).get_next(datetime))
     except (CroniterBadCronError, ValueError):
         return None
 
@@ -65,6 +75,11 @@ def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
     headers = job.headers or {}
     body = job.body or {}
     task_type = headers.get("task_type") or body.get("task_type") or "http"
+    resolved_timeout = body.get("timeout_seconds") or body.get("timeout") or timeout
+    try:
+        resolved_timeout = max(1, int(resolved_timeout))
+    except (TypeError, ValueError):
+        resolved_timeout = timeout
     return {
         "job_id": job.job_id,
         "method": job.method.value,
@@ -72,8 +87,18 @@ def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
         "headers": headers,
         "body": body,
         "task_type": task_type,
-        "timeout": timeout,
+        "timeout": resolved_timeout,
     }
+
+
+def get_job_timeout_seconds(job: Job, default_timeout: int = 300) -> int:
+    """Return the configured timeout from job body, falling back to default."""
+    body = job.body or {}
+    timeout = body.get("timeout_seconds") or body.get("timeout") or default_timeout
+    try:
+        return max(1, int(timeout))
+    except (TypeError, ValueError):
+        return default_timeout
 
 # ==========================================
 #                  USER CRUD
@@ -260,6 +285,8 @@ def create_job(
     depends_on = getattr(job_in, "depends_on", None) or []
     if initialize_next_run_time and next_run_time is None:
         next_run_time = compute_initial_next_run_time(job_in)
+    else:
+        next_run_time = as_utc_naive(next_run_time)
 
     new_job = Job(
         owner_id=owner_id,
@@ -350,7 +377,7 @@ def get_active_jobs(
         list[Job]: A list of job objects ready for execution.
     """
 
-    check_time = target_time if target_time else func.now()
+    check_time = as_utc_naive(target_time) if target_time else utc_now()
 
     conditions = [
         Job.status == JobStatus.ACTIVE,
@@ -515,7 +542,7 @@ def purge_old_deleted_jobs(db: Session, retention_days: int = 30) -> int:
     Returns:
         int: The number of jobs permanently deleted.
     """
-    threshold_time = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    threshold_time = utc_now() - timedelta(days=retention_days)
 
     # Find all jobs that are DELETED and were updated before the threshold time
     jobs_to_delete = db.scalars(
@@ -730,11 +757,12 @@ def update_execution_status(
     if not exec_record:
         return None
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = utc_now()
     exec_record.status = status
 
     if status == ExecutionStatus.RUNNING:
         exec_record.start_time = now_utc
+        exec_record.last_heartbeat = now_utc
         if worker_id:
             exec_record.worker_id = worker_id
 
@@ -745,12 +773,36 @@ def update_execution_status(
         ExecutionStatus.CANCELLED,
     ]:
         exec_record.end_time = now_utc
+        exec_record.last_heartbeat = now_utc
         if error_message:
             exec_record.error_message = error_message
 
         if exec_record.start_time:
             exec_record.duration = elapsed_seconds(exec_record.start_time, now_utc)
 
+    db.commit()
+    db.refresh(exec_record)
+    return exec_record
+
+
+def refresh_execution_heartbeat(
+    db: Session,
+    execution_id: int,
+    worker_id: str | None = None,
+    heartbeat_time: datetime | None = None,
+) -> Execution | None:
+    """Update the DB heartbeat for a running execution."""
+    exec_record = db.scalar(
+        select(Execution).where(Execution.execution_id == execution_id)
+    )
+    if exec_record is None:
+        return None
+    if exec_record.status != ExecutionStatus.RUNNING:
+        return exec_record
+
+    exec_record.last_heartbeat = as_utc_naive(heartbeat_time) or utc_now()
+    if worker_id:
+        exec_record.worker_id = worker_id
     db.commit()
     db.refresh(exec_record)
     return exec_record
@@ -777,7 +829,7 @@ def report_execution_result(  # noqa: C901
     if report.job_id is not None and report.job_id != exec_record.job_id:
         return None
 
-    now_utc = datetime.now(timezone.utc)
+    now_utc = utc_now()
     exec_record.status = report.status
     exec_record.worker_id = report.worker_id
     exec_record.error_message = report.error_message
@@ -786,12 +838,15 @@ def report_execution_result(  # noqa: C901
         exec_record.retry_count = report.retry_count
 
     if report.start_time is not None:
-        exec_record.start_time = report.start_time
+        exec_record.start_time = as_utc_naive(report.start_time)
     elif report.status == ExecutionStatus.RUNNING and exec_record.start_time is None:
         exec_record.start_time = now_utc
 
+    if report.status == ExecutionStatus.RUNNING:
+        exec_record.last_heartbeat = now_utc
+
     if report.end_time is not None:
-        exec_record.end_time = report.end_time
+        exec_record.end_time = as_utc_naive(report.end_time)
     elif report.status in [
         ExecutionStatus.SUCCESS,
         ExecutionStatus.FAILED,
@@ -799,6 +854,7 @@ def report_execution_result(  # noqa: C901
         ExecutionStatus.CANCELLED,
     ]:
         exec_record.end_time = now_utc
+        exec_record.last_heartbeat = now_utc
 
     if report.duration is not None:
         exec_record.duration = max(1, math.ceil(report.duration))
@@ -887,6 +943,25 @@ def get_upstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:
             select(JobDependency).where(JobDependency.downstream_id == job_id)
         ).all()
     )
+
+
+def get_upstream_dependency_ids(db: Session, job_id: int) -> list[int]:
+    return [dep.upstream_id for dep in get_upstream_dependencies(db=db, job_id=job_id)]
+
+
+def get_unsatisfied_dependency_ids(db: Session, job_id: int) -> list[int]:
+    """Return upstream job IDs whose latest execution is not successful."""
+    unsatisfied = []
+    for dep in get_upstream_dependencies(db=db, job_id=job_id):
+        latest_execution = db.scalar(
+            select(Execution)
+            .where(Execution.job_id == dep.upstream_id)
+            .order_by(Execution.created_at.desc())
+            .limit(1)
+        )
+        if latest_execution is None or latest_execution.status != ExecutionStatus.SUCCESS:
+            unsatisfied.append(dep.upstream_id)
+    return unsatisfied
 
 
 def get_downstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:

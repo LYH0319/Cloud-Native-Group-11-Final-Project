@@ -16,6 +16,13 @@ def can_operate_all_jobs(user: User) -> bool:
     return user.role in {UserRole.OPERATOR, UserRole.ADMIN}
 
 
+def serialize_job(db: Session, job) -> dict:
+    data = schemas.JobResponse.model_validate(job).model_dump()
+    data["depends_on"] = crud.get_upstream_dependency_ids(db=db, job_id=job.job_id)
+    data["timeout_seconds"] = crud.get_job_timeout_seconds(job)
+    return data
+
+
 def require_accessible_job(job_id: int, db: Session, current_user: User):
     job = crud.get_job_by_id(db=db, job_id=job_id)
     if job is None or job.status == JobStatus.DELETED:
@@ -40,8 +47,10 @@ def list_jobs(
 ):
     """List own jobs for developers and all jobs for operators/admins."""
     if can_operate_all_jobs(current_user):
-        return crud.get_all_jobs(db=db)
-    return crud.get_jobs_by_owner_id(db=db, owner_id=current_user.user_id)
+        jobs = crud.get_all_jobs(db=db)
+    else:
+        jobs = crud.get_jobs_by_owner_id(db=db, owner_id=current_user.user_id)
+    return [serialize_job(db=db, job=job) for job in jobs]
 
 
 @router.get("/{job_id}", response_model=schemas.JobResponse)
@@ -51,7 +60,8 @@ def get_job(
     current_user: User = Depends(get_current_user),
 ):
     """Return one job if it belongs to the authenticated user."""
-    return require_accessible_job(job_id, db, current_user)
+    job = require_accessible_job(job_id, db, current_user)
+    return serialize_job(db=db, job=job)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -126,6 +136,15 @@ def manually_trigger_job(
             status_code=status.HTTP_409_CONFLICT,
             detail="Job is not executable",
         )
+    unsatisfied_dependencies = crud.get_unsatisfied_dependency_ids(db=db, job_id=job_id)
+    if unsatisfied_dependencies:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Job dependencies are not satisfied. Waiting for upstream job(s): "
+                + ", ".join(str(job_id) for job_id in unsatisfied_dependencies)
+            ),
+        )
 
     execution = crud.create_execution(
         db=db,
@@ -134,7 +153,7 @@ def manually_trigger_job(
     )
     dispatch_info = dispatch_task(
         execution_id=execution.execution_id,
-        job_dict=crud.job_to_task_dict(job, timeout=60),
+        job_dict=crud.job_to_task_dict(job),
     )
 
     return {

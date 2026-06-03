@@ -53,6 +53,8 @@ export interface BackendJob {
   headers?: Record<string, unknown> | null;
   body?: JobBody | null;
   cron_expression?: string | null;
+  depends_on?: number[];
+  timeout_seconds?: number | null;
   status: 'Active' | 'Disabled' | 'Deleted' | string;
   next_run_time?: string | null;
   created_at: string;
@@ -66,6 +68,7 @@ export interface ExecutionRecord {
   status: 'Pending' | 'Running' | 'Success' | 'Failed' | 'Timeout' | 'Cancelled' | string;
   start_time?: string | null;
   end_time?: string | null;
+  last_heartbeat?: string | null;
   duration?: number | null;
   worker_id?: string | null;
   retry_count: number;

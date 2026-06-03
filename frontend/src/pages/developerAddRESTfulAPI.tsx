@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
-import { createJob } from '../api';
-import { type JobBody, type JobCreatePayload } from '../types/types';
+import { createJob, listJobs } from '../api';
+import { type BackendJob, type JobBody, type JobCreatePayload } from '../types/types';
 
 type HttpMethod = JobCreatePayload['method'];
 type ScheduleType = JobCreatePayload['schedule_type'];
@@ -15,21 +15,40 @@ export const DeveloperAddRESTfulAPI = () => {
   const [cronExpression, setCronExpression] = useState('*/5 * * * *');
   const [headersJson, setHeadersJson] = useState('{}');
   const [bodyJson, setBodyJson] = useState('{}');
+  const [timeoutSeconds, setTimeoutSeconds] = useState(60);
+  const [availableJobs, setAvailableJobs] = useState<BackendJob[]>([]);
+  const [dependsOn, setDependsOn] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    listJobs()
+      .then((jobs) => setAvailableJobs(jobs.filter((job) => job.status === 'Active')))
+      .catch(() => setAvailableJobs([]));
+  }, []);
+
+  const toggleDependency = (jobId: number) => {
+    setDependsOn((current) =>
+      current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]
+    );
+  };
 
   const handleSubmit = async () => {
     try {
       setLoading(true);
       const headers = JSON.parse(headersJson || '{}') as Record<string, unknown>;
-      const body = JSON.parse(bodyJson || '{}') as JobBody;
+      const body = {
+        ...(JSON.parse(bodyJson || '{}') as JobBody),
+        timeout_seconds: timeoutSeconds
+      };
       const payload: JobCreatePayload = {
         job_name: jobName,
         method,
         endpoint,
         schedule_type: scheduleType,
         headers,
-        body
+        body,
+        depends_on: dependsOn
       };
 
       if (scheduleType === 'Recurring') {
@@ -130,10 +149,40 @@ export const DeveloperAddRESTfulAPI = () => {
             />
           </div>
         </div>
+        <label className="form-label">Timeout seconds</label>
+        <input
+          type="number"
+          className="form-control mb-2"
+          min={1}
+          value={timeoutSeconds}
+          onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
+        />
+        <label className="form-label">Depends on jobs</label>
+        <div className="border rounded p-2 mb-2 bg-white">
+          {availableJobs.length === 0 ? (
+            <div className="text-muted small">No active jobs available</div>
+          ) : (
+            availableJobs.map((job) => (
+              <div className="form-check" key={job.job_id}>
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`depends-rest-${job.job_id}`}
+                  checked={dependsOn.includes(job.job_id)}
+                  onChange={() => toggleDependency(job.job_id)}
+                />
+                <label className="form-check-label" htmlFor={`depends-rest-${job.job_id}`}>
+                  #{job.job_id} {job.job_name}
+                </label>
+              </div>
+            ))
+          )}
+        </div>
         <label htmlFor="headers-json" className="form-label">
           Headers JSON
         </label>
         <textarea
+          id="headers-json"
           className="form-control mb-2"
           rows={4}
           value={headersJson}

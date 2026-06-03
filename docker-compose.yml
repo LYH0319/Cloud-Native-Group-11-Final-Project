@@ -33,7 +33,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-    container_name: group11-worker
     volumes:
       - ./backend:/app
       - ./logs:/app/logs
@@ -77,8 +76,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: group11-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -87,8 +84,6 @@ services:
     image: mysql:8.4
     container_name: group11-mysql
     restart: unless-stopped
-    ports:
-      - "3306:3306"
     env_file:
       - ./backend/.env
     environment:

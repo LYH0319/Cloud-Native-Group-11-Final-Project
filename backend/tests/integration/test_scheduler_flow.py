@@ -17,7 +17,11 @@ from src.database import schemas
 from src.database import crud
 
 # Import the module to be tested
-from src.scheduler.cron_scheduler import check_predecessors_done, start_cron_scheduler
+from src.scheduler.cron_scheduler import (
+    check_predecessors_done,
+    recover_stale_executions,
+    start_cron_scheduler,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.scheduler]
 
@@ -530,3 +534,51 @@ def test_scheduler_db_rollback_on_exception(mock_sleep, mock_dispatch, db_sessio
     executions = crud.get_executions_by_job_id(db=db_session, job_id=job.job_id)
     assert len(executions) == 1
     assert executions[0].status == ExecutionStatus.PENDING
+
+
+def test_recover_stale_execution_marks_timeout_and_retries(db_session):
+    user = schemas.UserCreate(
+        employee_id="0007_stale", username="StaleWorker", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="stale_job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/stale",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    execution = crud.create_execution(
+        db=db_session,
+        job_id=job.job_id,
+        trigger_type=TriggerType.SCHEDULER,
+    )
+    crud.update_execution_status(
+        db=db_session,
+        execution_id=execution.execution_id,
+        status=ExecutionStatus.RUNNING,
+        worker_id="dead-worker",
+    )
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+    execution.last_heartbeat = stale_time
+    execution.start_time = stale_time
+    db_session.commit()
+
+    dispatched = []
+    retried = recover_stale_executions(
+        db=db_session,
+        now_utc=datetime.now(timezone.utc),
+        stale_after_seconds=60,
+        max_retries=1,
+        dispatch_fn=lambda **kwargs: dispatched.append(kwargs),
+    )
+
+    db_session.refresh(execution)
+    assert execution.status == ExecutionStatus.TIMEOUT
+    assert execution.error_message is not None
+    assert retried
+    assert retried[0].retry_count == 1
+    assert dispatched[0]["execution_id"] == retried[0].execution_id

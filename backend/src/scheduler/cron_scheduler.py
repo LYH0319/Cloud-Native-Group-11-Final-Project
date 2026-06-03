@@ -1,5 +1,5 @@
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import select
 
@@ -13,18 +13,83 @@ from src.database.models import (
     JobDependency,
     Execution,
     ExecutionStatus,
+    JobStatus,
     ScheduleType,
     TriggerType,
 )
 
 # 3. 引入crud.py的邏輯函式
 from src.database.crud import (
+    as_utc_naive,
     compute_next_recurring_run_time,
     create_execution,
     get_active_jobs,
     job_to_task_dict,
+    utc_now,
 )
 from src.worker.executor import dispatch_task
+
+
+def recover_stale_executions(
+    db: Session,
+    now_utc: datetime | None = None,
+    stale_after_seconds: int | None = None,
+    max_retries: int | None = None,
+    dispatch_fn=dispatch_task,
+) -> list[Execution]:
+    """Mark stale running executions timed out and retry eligible jobs."""
+    now_utc = as_utc_naive(now_utc) or utc_now()
+    stale_after = stale_after_seconds or settings.HEARTBEAT_TIMEOUT
+    retry_limit = settings.MAX_EXECUTION_RETRIES if max_retries is None else max_retries
+    cutoff = now_utc - timedelta(seconds=stale_after)
+
+    stale_executions = list(
+        db.scalars(
+            select(Execution)
+            .where(Execution.status == ExecutionStatus.RUNNING)
+            .where(
+                (Execution.last_heartbeat.is_(None))
+                | (Execution.last_heartbeat < cutoff)
+            )
+        ).all()
+    )
+
+    retried_executions: list[Execution] = []
+    for execution in stale_executions:
+        execution.status = ExecutionStatus.TIMEOUT
+        execution.end_time = now_utc
+        execution.last_heartbeat = now_utc
+        execution.error_message = (
+            f"Execution heartbeat stale for more than {stale_after} seconds"
+        )
+        if execution.start_time:
+            execution.duration = max(
+                1,
+                int((now_utc - as_utc_naive(execution.start_time)).total_seconds()),
+            )
+        db.commit()
+        db.refresh(execution)
+
+        if execution.retry_count >= retry_limit:
+            continue
+        if execution.job is None or execution.job.status != JobStatus.ACTIVE:
+            continue
+        if not check_predecessors_done(db=db, job_id=execution.job_id):
+            continue
+
+        retry_execution = create_execution(
+            db=db,
+            job_id=execution.job_id,
+            trigger_type=execution.trigger_type,
+            retry_count=execution.retry_count + 1,
+        )
+        dispatch_fn(
+            execution_id=retry_execution.execution_id,
+            job_dict=job_to_task_dict(execution.job),
+        )
+        retried_executions.append(retry_execution)
+
+    return retried_executions
 
 
 def check_predecessors_done(db: Session, job_id: int) -> bool:
@@ -72,7 +137,9 @@ def start_cron_scheduler(db_session_factory: sessionmaker = SessionLocal):
         db: Session = db_session_factory()
         try:
             # 統一取得當下的 UTC 時間
-            now_utc = datetime.now(timezone.utc)
+            now_utc = utc_now()
+
+            recover_stale_executions(db=db, now_utc=now_utc)
 
             # 呼叫 get_active_jobs 撈出時間到的 ACTIVE 任務 (one-time & cron)
             due_jobs = get_active_jobs(

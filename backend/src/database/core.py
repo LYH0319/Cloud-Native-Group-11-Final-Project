@@ -87,9 +87,7 @@ def ensure_schema_compatibility(bind_engine=None) -> None:
     if not inspector.has_table("users"):
         return
 
-    existing_columns = {
-        column["name"] for column in inspector.get_columns("users")
-    }
+    existing_columns = {column["name"] for column in inspector.get_columns("users")}
     statements = []
     if "email" not in existing_columns:
         statements.append("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL")
@@ -97,6 +95,13 @@ def ensure_schema_compatibility(bind_engine=None) -> None:
         statements.append(
             "ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255) NULL"
         )
+
+    if inspector.has_table("executions"):
+        execution_columns = {
+            column["name"] for column in inspector.get_columns("executions")
+        }
+        if "last_heartbeat" not in execution_columns:
+            statements.append("ALTER TABLE executions ADD COLUMN last_heartbeat DATETIME NULL")
 
     if not statements:
         return

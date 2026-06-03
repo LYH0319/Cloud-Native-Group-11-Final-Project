@@ -2,6 +2,8 @@ import redis
 import json
 import time
 import logging
+import os
+import socket
 import threading  # 引入線程庫，處理長任務的非同步心跳 (NFR: 長時間任務處理)
 from sqlalchemy.orm import Session
 
@@ -15,9 +17,13 @@ from src.worker.tasks.shell_task import run_shell_task
 
 # 3. 引入 沅籈 寫好的資料庫更新函式與狀態定義
 from src.database import schemas
-from src.database.crud import report_execution_result, update_execution_status
+from src.database.crud import (
+    refresh_execution_heartbeat,
+    report_execution_result,
+    update_execution_status,
+)
 from src.database.models import ExecutionStatus
-from src.database.core import SessionLocal, engine
+from src.database.core import SessionLocal, engine, ensure_schema_compatibility
 from src.database.models import Base
 from src.utils.logger import write_execution_log
 
@@ -26,6 +32,10 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
 )
 logger = logging.getLogger("WorkerExecutor")
+
+
+def get_worker_id() -> str:
+    return os.getenv("WORKER_ID") or socket.gethostname() or "group11-worker"
 
 
 # ==================================================================
@@ -125,6 +135,15 @@ class HeartbeatThread(threading.Thread):
                     state.model_dump_json(),
                     ex=settings.HEARTBEAT_TIMEOUT,
                 )
+                db: Session = SessionLocal()
+                try:
+                    refresh_execution_heartbeat(
+                        db=db,
+                        execution_id=self.task.execution_id,
+                        worker_id=get_worker_id(),
+                    )
+                finally:
+                    db.close()
                 logger.debug(
                     f"[Heartbeat] 已向 Cache 刷新生存訊號: {self.heartbeat_key}"
                 )
@@ -165,7 +184,7 @@ def report_to_database(
     # 建立資料庫連線 Session
     db: Session = SessionLocal()
     try:
-        worker_id = "group11_worker_container_node"
+        worker_id = get_worker_id()
         if log_path is not None:
             result = report_execution_result(
                 db=db,
@@ -292,6 +311,7 @@ def worker_loop():
     try:
         logger.info("[DB Init] 正在檢查定自動建立MySQL所有資料表...")
         Base.metadata.create_all(bind=engine)
+        ensure_schema_compatibility(engine)
         logger.info("[DB Init 成功] MySQL 資料表確認建立完成!")
     except Exception as e:
         logger.warning(f"[DB Init 警告] 自動建表失敗，請確認連線或設定: {str(e)}")
