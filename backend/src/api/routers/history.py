@@ -87,8 +87,8 @@ def list_job_executions(
         "execution_id",
     ] = "created_at",
     order_direction: Literal["asc", "desc"] = "desc",
-    db: Annotated[Session, Depends(get_db)] = Depends(),                  
-    current_user: Annotated[User, Depends(get_current_user)] = Depends(),
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Return filtered execution history for one job, newest records first."""
     require_owned_job(job_id, db, current_user)
@@ -141,8 +141,8 @@ def list_executions(
     worker_id: str | None = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    db: Annotated[Session, Depends(get_db)] = Depends(),                  
-    current_user: Annotated[User, Depends(get_current_user)] = Depends(),
+    db: Annotated[Session, Depends(get_db)] = None,                  
+    current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Return all execution results for operators/admins."""
     if not can_view_all_results(current_user):
