@@ -552,6 +552,14 @@ def create_execution(db: Session, job_id: int, trigger_type: TriggerType) -> Exe
     db.add(new_exec)
     db.commit()
     db.refresh(new_exec)
+
+    try:
+        from src.api.metrics import job_executions_total
+
+        job_executions_total.inc()
+    except ImportError:
+        pass
+
     return new_exec
 
 

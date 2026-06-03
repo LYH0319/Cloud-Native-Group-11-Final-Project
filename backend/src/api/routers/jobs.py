@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 import src.database.crud as crud
 import src.database.schemas as schemas
+from src.api import metrics
 from src.api.dependencies import get_current_user
 from src.database.core import get_db
 from src.database.models import JobStatus, TriggerType, User
@@ -74,6 +75,7 @@ def register_job(
             job_in=payload,
             initialize_next_run_time=True,
         )
+        metrics.job_creations_total.inc()
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -130,6 +132,7 @@ def manually_trigger_job(
         job_id=job_id,
         trigger_type=TriggerType.MANUAL,
     )
+    metrics.job_triggers_total.inc()
     dispatch_info = dispatch_task(
         execution_id=execution.execution_id,
         job_dict=crud.job_to_task_dict(job, timeout=60),
