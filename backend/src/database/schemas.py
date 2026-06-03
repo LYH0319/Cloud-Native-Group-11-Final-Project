@@ -184,6 +184,8 @@ class JobResponse(JobBase):
     owner_id: int
     status: JobStatus
     next_run_time: Optional[datetime]
+    depends_on: list[int] = Field(default_factory=list)
+    timeout_seconds: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -271,6 +273,7 @@ class ExecutionResponse(BaseModel):
     status: ExecutionStatus
     start_time: Optional[datetime]
     end_time: Optional[datetime]
+    last_heartbeat: Optional[datetime]
     duration: Optional[int]
     worker_id: Optional[str]
     retry_count: int

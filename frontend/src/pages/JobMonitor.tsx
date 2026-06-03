@@ -39,6 +39,11 @@ const formatDate = (value?: string | null) => {
 
 const latestExecution = (items: ExecutionRecord[] = []) => items[0] || null;
 
+const dependencyText = (job: BackendJob) =>
+  job.depends_on && job.depends_on.length > 0
+    ? job.depends_on.map((id) => `#${id}`).join(', ')
+    : '-';
+
 const formatDuration = (duration?: number | null) => {
   if (duration === null || duration === undefined) return '-';
   return `${duration} 秒`;
@@ -54,6 +59,7 @@ const executionRows = (execution: ExecutionRecord) =>
     ['開始時間', formatDate(execution.start_time)],
     ['結束時間', formatDate(execution.end_time)],
     ['執行時間', formatDuration(execution.duration)],
+    ['Heartbeat', formatDate(execution.last_heartbeat)],
     ['Worker', execution.worker_id || '-'],
     ['Retry 次數', execution.retry_count],
     ['錯誤訊息', execution.error_message || '-']
@@ -281,6 +287,10 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
                     <td style={operatorStyles.td}>
                       {job.schedule_type}
                       <div style={operatorStyles.detailText}>{job.cron_expression || '-'}</div>
+                      <div style={operatorStyles.detailText}>Depends: {dependencyText(job)}</div>
+                      <div style={operatorStyles.detailText}>
+                        Timeout: {job.timeout_seconds ? `${job.timeout_seconds}s` : '-'}
+                      </div>
                     </td>
                     <td style={operatorStyles.td}>{job.status}</td>
                     <td style={operatorStyles.td}>
@@ -363,6 +373,14 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
                     <dd>{latest?.retry_count ?? '-'}</dd>
                   </div>
                   <div>
+                    <dt>Timeout</dt>
+                    <dd>{job.timeout_seconds ? `${job.timeout_seconds}s` : '-'}</dd>
+                  </div>
+                  <div>
+                    <dt>Depends</dt>
+                    <dd>{dependencyText(job)}</dd>
+                  </div>
+                  <div>
                     <dt>下次執行</dt>
                     <dd>{formatDate(job.next_run_time)}</dd>
                   </div>
@@ -418,6 +436,14 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               <div className="col-12 col-md-4">
                 <strong>Job 建立時間</strong>
                 <div>{formatDate(modalJob.created_at)}</div>
+              </div>
+              <div className="col-12 col-md-4">
+                <strong>Timeout</strong>
+                <div>{modalJob.timeout_seconds ? `${modalJob.timeout_seconds}s` : '-'}</div>
+              </div>
+              <div className="col-12 col-md-4">
+                <strong>Depends on</strong>
+                <div>{dependencyText(modalJob)}</div>
               </div>
             </div>
 

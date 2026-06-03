@@ -208,6 +208,17 @@ Cloud-Native-Group-11-Final-Project/
 docker compose up -d --build
 ```
 
+To run multiple workers on the internal Redis/MySQL network:
+
+```bash
+docker compose up -d --build --scale backend-worker=3
+```
+
+`backend-worker` intentionally has no fixed `container_name`, so Compose can create
+multiple replicas. Each worker uses `WORKER_ID` when provided, otherwise the
+container hostname is recorded in `executions.worker_id`. MySQL and Redis are not
+published to the host; they are reachable only from services in the Compose network.
+
 這會啟動：
 
 - `backend`：FastAPI API server，對外 port `8000`
@@ -251,7 +262,15 @@ docker compose restart backend
 docker compose down
 ```
 
-如果本地 MySQL volume 是舊 schema，後端啟動時會自動補 auth 需要的 `users.email` 與 `users.hashed_password` 欄位。
+Stale execution recovery demo:
+
+1. Create a long-running shell job, for example `python -c "import time; time.sleep(120)"`.
+2. Trigger it manually and wait until the execution becomes `Running`.
+3. Stop the worker handling it, for example `docker compose stop backend-worker`.
+4. Start the scheduler/worker again and wait longer than `HEARTBEAT_TIMEOUT`.
+5. The scheduler marks the stale execution `Timeout`; if retry budget remains, it creates and dispatches a new execution.
+
+如果本地 MySQL volume 是舊 schema，後端啟動時會自動補 auth 需要的 `users.email`、`users.hashed_password` 與 `executions.last_heartbeat` 欄位。
 
 ### 2. 開啟開發測試用模擬前端
 

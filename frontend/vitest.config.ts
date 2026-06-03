@@ -6,7 +6,7 @@ type VitestConfig = ViteUserConfig & {
 
 const config: VitestConfig = {
   test: {
-    exclude: ['dist/**', 'node_modules/**']
+    exclude: ['dist/**', 'node_modules/**', 'manual-test-backup/**']
   }
 };
 

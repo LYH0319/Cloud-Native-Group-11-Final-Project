@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
-import { createJob } from '../api';
-import { type JobCreatePayload } from '../types/types';
+import { createJob, listJobs } from '../api';
+import { type BackendJob, type JobCreatePayload } from '../types/types';
 
 type ScheduleType = JobCreatePayload['schedule_type'];
 
@@ -12,8 +12,22 @@ export const DeveloperAddShellScript = () => {
   const [scheduleType, setScheduleType] = useState<ScheduleType>('One-time');
   const [cronExpression, setCronExpression] = useState('*/5 * * * *');
   const [timeoutSeconds, setTimeoutSeconds] = useState(60);
+  const [availableJobs, setAvailableJobs] = useState<BackendJob[]>([]);
+  const [dependsOn, setDependsOn] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    listJobs()
+      .then((jobs) => setAvailableJobs(jobs.filter((job) => job.status === 'Active')))
+      .catch(() => setAvailableJobs([]));
+  }, []);
+
+  const toggleDependency = (jobId: number) => {
+    setDependsOn((current) =>
+      current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]
+    );
+  };
 
   const handleSubmit = async () => {
     try {
@@ -27,7 +41,8 @@ export const DeveloperAddShellScript = () => {
         body: {
           command,
           timeout_seconds: timeoutSeconds
-        }
+        },
+        depends_on: dependsOn
       };
 
       if (scheduleType === 'Recurring') {
@@ -119,6 +134,27 @@ export const DeveloperAddShellScript = () => {
               onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
             />
           </div>
+        </div>
+        <label className="form-label">Depends on jobs</label>
+        <div className="border rounded p-2 mb-3 bg-white">
+          {availableJobs.length === 0 ? (
+            <div className="text-muted small">No active jobs available</div>
+          ) : (
+            availableJobs.map((job) => (
+              <div className="form-check" key={job.job_id}>
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id={`depends-shell-${job.job_id}`}
+                  checked={dependsOn.includes(job.job_id)}
+                  onChange={() => toggleDependency(job.job_id)}
+                />
+                <label className="form-check-label" htmlFor={`depends-shell-${job.job_id}`}>
+                  #{job.job_id} {job.job_name}
+                </label>
+              </div>
+            ))
+          )}
         </div>
         <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
           {loading ? '建立中...' : '註冊 Shell Script Job'}

@@ -257,6 +257,18 @@ def rerun_execution(
             status_code=status.HTTP_409_CONFLICT,
             detail="Job is not executable",
         )
+    unsatisfied_dependencies = crud.get_unsatisfied_dependency_ids(
+        db=db,
+        job_id=job.job_id,
+    )
+    if unsatisfied_dependencies:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Job dependencies are not satisfied. Waiting for upstream job(s): "
+                + ", ".join(str(job_id) for job_id in unsatisfied_dependencies)
+            ),
+        )
 
     new_execution = crud.create_execution(
         db=db,
@@ -266,7 +278,7 @@ def rerun_execution(
     )
     dispatch_info = dispatch_task(
         execution_id=new_execution.execution_id,
-        job_dict=crud.job_to_task_dict(job, timeout=60),
+        job_dict=crud.job_to_task_dict(job),
     )
     return {
         "execution": new_execution,

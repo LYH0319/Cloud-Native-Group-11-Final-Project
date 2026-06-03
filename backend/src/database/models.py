@@ -258,6 +258,9 @@ class Execution(Base):
 
     start_time: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
     end_time: Mapped[Optional[datetime]] = mapped_column(nullable=True, default=None)
+    last_heartbeat: Mapped[Optional[datetime]] = mapped_column(
+        nullable=True, default=None
+    )
     duration: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True, default=None
     )

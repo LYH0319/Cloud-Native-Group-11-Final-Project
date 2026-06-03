@@ -65,6 +65,11 @@ def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
     headers = job.headers or {}
     body = job.body or {}
     task_type = headers.get("task_type") or body.get("task_type") or "http"
+    resolved_timeout = body.get("timeout_seconds") or body.get("timeout") or timeout
+    try:
+        resolved_timeout = max(1, int(resolved_timeout))
+    except (TypeError, ValueError):
+        resolved_timeout = timeout
     return {
         "job_id": job.job_id,
         "method": job.method.value,
@@ -72,8 +77,18 @@ def job_to_task_dict(job: Job, timeout: int = 300) -> dict:
         "headers": headers,
         "body": body,
         "task_type": task_type,
-        "timeout": timeout,
+        "timeout": resolved_timeout,
     }
+
+
+def get_job_timeout_seconds(job: Job, default_timeout: int = 300) -> int:
+    """Return the configured timeout from job body, falling back to default."""
+    body = job.body or {}
+    timeout = body.get("timeout_seconds") or body.get("timeout") or default_timeout
+    try:
+        return max(1, int(timeout))
+    except (TypeError, ValueError):
+        return default_timeout
 
 # ==========================================
 #                  USER CRUD
@@ -735,6 +750,7 @@ def update_execution_status(
 
     if status == ExecutionStatus.RUNNING:
         exec_record.start_time = now_utc
+        exec_record.last_heartbeat = now_utc
         if worker_id:
             exec_record.worker_id = worker_id
 
@@ -745,12 +761,36 @@ def update_execution_status(
         ExecutionStatus.CANCELLED,
     ]:
         exec_record.end_time = now_utc
+        exec_record.last_heartbeat = now_utc
         if error_message:
             exec_record.error_message = error_message
 
         if exec_record.start_time:
             exec_record.duration = elapsed_seconds(exec_record.start_time, now_utc)
 
+    db.commit()
+    db.refresh(exec_record)
+    return exec_record
+
+
+def refresh_execution_heartbeat(
+    db: Session,
+    execution_id: int,
+    worker_id: str | None = None,
+    heartbeat_time: datetime | None = None,
+) -> Execution | None:
+    """Update the DB heartbeat for a running execution."""
+    exec_record = db.scalar(
+        select(Execution).where(Execution.execution_id == execution_id)
+    )
+    if exec_record is None:
+        return None
+    if exec_record.status != ExecutionStatus.RUNNING:
+        return exec_record
+
+    exec_record.last_heartbeat = heartbeat_time or datetime.now(timezone.utc)
+    if worker_id:
+        exec_record.worker_id = worker_id
     db.commit()
     db.refresh(exec_record)
     return exec_record
@@ -790,6 +830,9 @@ def report_execution_result(  # noqa: C901
     elif report.status == ExecutionStatus.RUNNING and exec_record.start_time is None:
         exec_record.start_time = now_utc
 
+    if report.status == ExecutionStatus.RUNNING:
+        exec_record.last_heartbeat = now_utc
+
     if report.end_time is not None:
         exec_record.end_time = report.end_time
     elif report.status in [
@@ -799,6 +842,7 @@ def report_execution_result(  # noqa: C901
         ExecutionStatus.CANCELLED,
     ]:
         exec_record.end_time = now_utc
+        exec_record.last_heartbeat = now_utc
 
     if report.duration is not None:
         exec_record.duration = max(1, math.ceil(report.duration))
@@ -887,6 +931,25 @@ def get_upstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:
             select(JobDependency).where(JobDependency.downstream_id == job_id)
         ).all()
     )
+
+
+def get_upstream_dependency_ids(db: Session, job_id: int) -> list[int]:
+    return [dep.upstream_id for dep in get_upstream_dependencies(db=db, job_id=job_id)]
+
+
+def get_unsatisfied_dependency_ids(db: Session, job_id: int) -> list[int]:
+    """Return upstream job IDs whose latest execution is not successful."""
+    unsatisfied = []
+    for dep in get_upstream_dependencies(db=db, job_id=job_id):
+        latest_execution = db.scalar(
+            select(Execution)
+            .where(Execution.job_id == dep.upstream_id)
+            .order_by(Execution.created_at.desc())
+            .limit(1)
+        )
+        if latest_execution is None or latest_execution.status != ExecutionStatus.SUCCESS:
+            unsatisfied.append(dep.upstream_id)
+    return unsatisfied
 
 
 def get_downstream_dependencies(db: Session, job_id: int) -> list[JobDependency]:
