@@ -5,11 +5,32 @@ import src.database.crud as crud
 import src.database.schemas as schemas
 from src.api.dependencies import get_current_user
 from src.database.core import get_db
-from src.database.models import JobStatus, TriggerType, User
+from src.database.models import JobStatus, TriggerType, User, UserRole
 from src.utils.cycle_detection import has_cycle
 from src.worker.executor import dispatch_task
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
+
+
+def can_operate_all_jobs(user: User) -> bool:
+    return user.role in {UserRole.OPERATOR, UserRole.ADMIN}
+
+
+def require_accessible_job(job_id: int, db: Session, current_user: User):
+    job = crud.get_job_by_id(db=db, job_id=job_id)
+    if job is None or job.status == JobStatus.DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    if job.owner_id != current_user.user_id and not can_operate_all_jobs(
+        current_user
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    return job
 
 
 @router.get("/", response_model=list[schemas.JobResponse])
@@ -17,7 +38,9 @@ def list_jobs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List jobs owned by the authenticated user."""
+    """List own jobs for developers and all jobs for operators/admins."""
+    if can_operate_all_jobs(current_user):
+        return crud.get_all_jobs(db=db)
     return crud.get_jobs_by_owner_id(db=db, owner_id=current_user.user_id)
 
 
@@ -28,18 +51,7 @@ def get_job(
     current_user: User = Depends(get_current_user),
 ):
     """Return one job if it belongs to the authenticated user."""
-    job = crud.get_job_by_id(db=db, job_id=job_id)
-    if job is None or job.status == JobStatus.DELETED:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
-    if job.owner_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
-    return job
+    return require_accessible_job(job_id, db, current_user)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -108,17 +120,7 @@ def manually_trigger_job(
     current_user: User = Depends(get_current_user),
 ):
     """Create a manual execution and enqueue it for worker execution."""
-    job = crud.get_job_by_id(db=db, job_id=job_id)
-    if job is None or job.status == JobStatus.DELETED:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
-    if job.owner_id != current_user.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
+    job = require_accessible_job(job_id, db, current_user)
     if job.status != JobStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -144,3 +146,30 @@ def manually_trigger_job(
             "task_payload": dispatch_info["task_payload"],
         },
     }
+
+
+@router.patch("/{job_id}/status", response_model=schemas.JobResponse)
+def update_job_status(
+    job_id: int,
+    payload: schemas.JobStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Allow operators/admins to pause or resume jobs."""
+    if not can_operate_all_jobs(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator permission required",
+        )
+    require_accessible_job(job_id, db, current_user)
+    updated = crud.change_job_status(
+        db=db,
+        job_id=job_id,
+        new_status=payload.status,
+    )
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    return updated

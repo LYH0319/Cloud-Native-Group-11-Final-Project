@@ -40,7 +40,7 @@ redis_pool = redis.ConnectionPool(
 )
 
 
-def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
+def dispatch_task(execution_id: int, job_dict: dict, task_type: str | None = None):
     """
     【分布式派發窗口】
     不再使用本機 Thread，而是將任務序列化為 JSON，直接推入分散式快取 Redis Queue
@@ -48,11 +48,13 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     # 1. 重用Redis連線池
     r_client = redis.Redis(connection_pool=redis_pool)
 
+    resolved_task_type = task_type or job_dict.get("task_type") or "http"
+
     # 2. 封裝成 TaskPayload 格式，根據 json.loads(message_body) 需求
     task_payload = {
         "execution_id": execution_id,
         "job_id": job_dict["job_id"],
-        "task_type": task_type,  # "http" 或 "shell"
+        "task_type": resolved_task_type,  # "http" 或 "shell"
         "payload": job_dict,  # 實際要執行的 method, endpoint 等
         "timeout_threshold": job_dict.get("timeout", 300),
     }

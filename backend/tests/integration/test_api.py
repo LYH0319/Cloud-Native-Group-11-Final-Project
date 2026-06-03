@@ -16,10 +16,11 @@ from src.database.models import (
     JobStatus,
     ScheduleType,
     TriggerType,
+    User,
     UserRole,
 )
 from src.utils import logger as log_storage
-from src.utils.security import create_access_token
+from src.utils.security import create_access_token, hash_password
 
 pytestmark = [pytest.mark.integration, pytest.mark.api, pytest.mark.auth]
 
@@ -112,6 +113,19 @@ def _create_default_job_owner(api_db_session):
     )
 
 
+def _create_test_admin(api_db_session):
+    admin = User(
+        employee_id="admin",
+        username="Admin",
+        role=UserRole.ADMIN,
+        hashed_password=hash_password("admin"),
+    )
+    api_db_session.add(admin)
+    api_db_session.commit()
+    api_db_session.refresh(admin)
+    return admin
+
+
 def test_auth_register_succeeds(client):
     response = client.post(
         "/api/auth/register",
@@ -196,6 +210,86 @@ def test_auth_login_returns_access_token(client):
     assert body["access_token"]
     assert body["expires_in"] == 3600
     assert body["user"]["username"] == "AuthUserFive"
+
+
+def test_builtin_admin_login_returns_admin_token(client, api_db_session):
+    _create_test_admin(api_db_session)
+
+    response = client.post(
+        "/api/auth/login-password",
+        json={"employee_id": "admin", "password": "admin"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["access_token"]
+    assert body["user"]["employee_id"] == "admin"
+    assert body["user"]["role"] == "Admin"
+
+
+def test_admin_can_list_and_delete_other_users(client, api_db_session):
+    _create_test_admin(api_db_session)
+
+    admin_login = client.post(
+        "/api/auth/login-password",
+        json={"employee_id": "admin", "password": "admin"},
+    )
+    admin_headers = {
+        "Authorization": f"Bearer {admin_login.json()['access_token']}"
+    }
+    created = client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "managed_user_1",
+            "username": "ManagedUserOne",
+            "password": "secret123",
+            "role": "Developer",
+        },
+    )
+    assert created.status_code == 201
+
+    users_response = client.get("/api/auth/users", headers=admin_headers)
+
+    assert users_response.status_code == 200
+    managed_user = next(
+        user
+        for user in users_response.json()
+        if user["employee_id"] == "managed_user_1"
+    )
+
+    delete_response = client.delete(
+        f"/api/auth/users/{managed_user['user_id']}",
+        headers=admin_headers,
+    )
+
+    assert delete_response.status_code == 204
+    users_after_delete = client.get("/api/auth/users", headers=admin_headers)
+    assert "managed_user_1" not in {
+        user["employee_id"] for user in users_after_delete.json()
+    }
+
+
+def test_admin_cannot_delete_builtin_admin(client, api_db_session):
+    _create_test_admin(api_db_session)
+
+    admin_login = client.post(
+        "/api/auth/login-password",
+        json={"employee_id": "admin", "password": "admin"},
+    )
+    admin_headers = {
+        "Authorization": f"Bearer {admin_login.json()['access_token']}"
+    }
+    users_response = client.get("/api/auth/users", headers=admin_headers)
+    admin_user = next(
+        user for user in users_response.json() if user["employee_id"] == "admin"
+    )
+
+    response = client.delete(
+        f"/api/auth/users/{admin_user['user_id']}",
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 400
 
 
 def test_auth_register_normalizes_email_and_rejects_duplicate(client):
@@ -393,6 +487,47 @@ def test_manual_trigger_does_not_require_next_run_time(
     assert response.status_code == 201
     assert response.json()["execution"]["status"] == "Pending"
     mock_dispatch.assert_called_once()
+
+
+@patch("src.api.routers.jobs.dispatch_task")
+def test_manual_trigger_dispatches_shell_job_as_shell_task(
+    mock_dispatch,
+    client,
+    api_db_session,
+):
+    owner = _create_default_job_owner(api_db_session)
+    job = crud.create_job(
+        db=api_db_session,
+        owner_id=owner.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Shell Success",
+            method=HttpMethod.POST,
+            endpoint="shell://local",
+            schedule_type=ScheduleType.ONE_TIME,
+            headers={"task_type": "shell"},
+            body={"command": "echo hello"},
+        ),
+    )
+    mock_dispatch.return_value = {
+        "queued": True,
+        "queue_name": "job_priority_queue",
+        "task_payload": {
+            "execution_id": 1,
+            "job_id": job.job_id,
+            "task_type": "shell",
+            "payload": {},
+            "timeout_threshold": 60,
+        },
+    }
+
+    response = client.post(
+        f"/api/jobs/{job.job_id}/trigger",
+        headers=_auth_headers_for_user(owner),
+    )
+
+    assert response.status_code == 201
+    called_job_dict = mock_dispatch.call_args.kwargs["job_dict"]
+    assert called_job_dict["task_type"] == "shell"
 
 
 def test_get_job_executions_job_not_found(client, api_db_session):
@@ -720,6 +855,86 @@ def test_job_listing_only_returns_authenticated_users_jobs(client, api_db_sessio
 
     assert response.status_code == 200
     assert [item["job_id"] for item in response.json()] == [first_job.job_id]
+
+
+def test_operator_job_listing_returns_all_jobs(client, api_db_session):
+    first_user = _create_default_job_owner(api_db_session)
+    operator = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_operator",
+            username="ApiOperator",
+            role=UserRole.OPERATOR,
+        ),
+    )
+    first_job = crud.create_job(
+        db=api_db_session,
+        owner_id=first_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Developer Job",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/developer-job",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    response = client.get("/api/jobs/", headers=_auth_headers_for_user(operator))
+
+    assert response.status_code == 200
+    assert first_job.job_id in {item["job_id"] for item in response.json()}
+
+
+def test_developer_cannot_change_job_status(client, api_db_session):
+    user = _create_default_job_owner(api_db_session)
+    job = crud.create_job(
+        db=api_db_session,
+        owner_id=user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Developer Status",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/developer-status",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    response = client.patch(
+        f"/api/jobs/{job.job_id}/status",
+        json={"status": "Disabled"},
+        headers=_auth_headers_for_user(user),
+    )
+
+    assert response.status_code == 403
+
+
+def test_operator_can_change_job_status(client, api_db_session):
+    owner = _create_default_job_owner(api_db_session)
+    operator = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="api_operator_status",
+            username="ApiOperatorStatus",
+            role=UserRole.OPERATOR,
+        ),
+    )
+    job = crud.create_job(
+        db=api_db_session,
+        owner_id=owner.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Operator Status",
+            method=HttpMethod.GET,
+            endpoint="http://test.com/operator-status",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    response = client.patch(
+        f"/api/jobs/{job.job_id}/status",
+        json={"status": "Disabled"},
+        headers=_auth_headers_for_user(operator),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "Disabled"
 
 
 def test_get_job_detail_returns_authenticated_users_job(client, api_db_session):

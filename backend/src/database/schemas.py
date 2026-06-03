@@ -217,6 +217,12 @@ class JobUpdate(BaseModel):
     cron_expression: Optional[str] = Field(default=None, max_length=100)
 
 
+class JobStatusUpdate(BaseModel):
+    """Schema for operator/admin job status changes."""
+
+    status: JobStatus
+
+
 # ==========================================
 # 3. Execution Schemas
 # ==========================================

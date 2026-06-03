@@ -8,8 +8,12 @@ from src.api.dependencies import get_current_user
 import src.database.crud as crud
 import src.database.schemas as schemas
 from src.database.core import get_db
-from src.database.models import User
-from src.utils.security import ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
+from src.database.models import User, UserRole
+from src.utils.security import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    hash_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -27,12 +31,27 @@ def _build_token_response(user: User) -> dict:
     }
 
 
-def _ensure_unique_user_fields(db: Session, user_in: schemas.UserCreate) -> None:
+def _require_admin(current_user: User) -> None:
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin permission required",
+        )
+
+
+def _ensure_unique_user_fields(
+    db: Session,
+    user_in: schemas.UserCreate,
+) -> None:
     if user_in.email and crud.get_user_by_email(db=db, email=user_in.email):
         raise _conflict("email already registered")
     if crud.get_user_by_username(db=db, username=user_in.username):
         raise _conflict("username already registered")
-    if crud.get_user_by_employee_id(db=db, employee_id=user_in.employee_id):
+    existing_employee = crud.get_user_by_employee_id(
+        db=db,
+        employee_id=user_in.employee_id,
+    )
+    if existing_employee:
         raise _conflict("employee_id already registered")
 
 
@@ -85,6 +104,79 @@ async def login_user(
     return _build_token_response(user)
 
 
+@router.post("/check-id")
+def check_id(request: schemas.CheckIdRequest, db: Session = Depends(get_db)):
+    """Check whether an employee ID exists and already has a password."""
+    user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Can not find ID",
+        )
+    return {"isRegistered": bool(user.hashed_password)}
+
+
+@router.post("/register-password")
+def register_password(
+    request: schemas.PasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Set the initial password for a pre-created employee account."""
+    user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Can not find ID",
+        )
+    if user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password already registered",
+        )
+
+    user.hashed_password = hash_password(request.password)
+    db.commit()
+    return {"message": "Password registered successfully"}
+
+
+@router.post("/login-password", response_model=schemas.TokenResponse)
+def login_password(
+    request: schemas.PasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Authenticate the frontend employee-ID password flow and return a JWT."""
+    user = crud.authenticate_user(
+        db=db,
+        identifier=request.employee_id,
+        password=request.password,
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Password incorrect",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _build_token_response(user)
+
+
+@router.post("/reset-password")
+def reset_password(
+    request: schemas.ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """Reset an existing employee account password."""
+    user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Can not find ID",
+        )
+
+    user.hashed_password = hash_password(request.new_password)
+    db.commit()
+    return {"message": "Password reset successfully"}
+
+
 @router.get("/me", response_model=schemas.UserRead)
 def read_current_user(current_user: User = Depends(get_current_user)):
     """Return the authenticated user's public profile."""
@@ -94,6 +186,45 @@ def read_current_user(current_user: User = Depends(get_current_user)):
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout_user(_: User = Depends(get_current_user)):
     """Validate the current token and let clients discard it."""
+    return None
+
+
+@router.get("/users", response_model=list[schemas.UserRead])
+def list_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List active users for the admin account management page."""
+    _require_admin(current_user)
+    return crud.get_users(db=db)
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Soft delete a user account from the admin account management page."""
+    _require_admin(current_user)
+    user = crud.get_user_by_user_id(db=db, user_id=user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    if user.user_id == current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete current user",
+        )
+    if user.employee_id == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete builtin admin",
+        )
+
+    crud.delete_user(db=db, user_id=user_id)
     return None
 
 

@@ -1,40 +1,50 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
-import { type User, type JobBody } from '../types/types';
+import { createJob } from '../api';
+import { type JobCreatePayload } from '../types/types';
+
+type ScheduleType = JobCreatePayload['schedule_type'];
 
 export const DeveloperAddShellScript = () => {
-  const [method, setMethod] = useState('POST');
-  const [endpoint, setEndpoint] = useState('');
-  const [jsonBody, setJsonBody] = useState(
-    '{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}'
-  );
+  const [jobName, setJobName] = useState('Shell Script Job');
+  const [command, setCommand] = useState('echo hello');
+  const [scheduleType, setScheduleType] = useState<ScheduleType>('One-time');
+  const [cronExpression, setCronExpression] = useState('*/5 * * * *');
+  const [timeoutSeconds, setTimeoutSeconds] = useState(60);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const user: User = JSON.parse(localStorage.getItem('user') || '{}');
 
   const handleSubmit = async () => {
     try {
-      const parsedBody: JobBody = JSON.parse(jsonBody);
-      const payload = {
-        method,
-        endpoint,
-        headers: { 'Content-Type': 'application/json' },
-        body: parsedBody
+      setLoading(true);
+      const payload: JobCreatePayload = {
+        job_name: jobName,
+        method: 'POST',
+        endpoint: 'shell://local',
+        schedule_type: scheduleType,
+        headers: { task_type: 'shell' },
+        body: {
+          command,
+          timeout_seconds: timeoutSeconds
+        }
       };
 
-      const res = await fetch('http://localhost:8000/api/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-emp-id': user.id
-        },
-        body: JSON.stringify(payload)
-      });
+      if (scheduleType === 'Recurring') {
+        payload.cron_expression = cronExpression;
+      }
+
+      const res = await createJob(payload);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || '建立失敗');
+      }
       alert(data.message || '建立成功');
+      navigate('/developer');
     } catch (err) {
-      alert('JSON 格式錯誤或連線失敗！');
+      alert(err instanceof Error ? err.message : '連線失敗');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -42,50 +52,77 @@ export const DeveloperAddShellScript = () => {
     <div className="bg-light min-vh-100">
       <div style={Styles.styles.header}>
         <span>Job scheduler System</span>
-
         <div className="d-flex flex-column align-items-end">
-          <button
-            className="btn btn-light btn-sm px-3 mb-2"
-            onClick={() => navigate('/')}
-            style={Styles.homeLoginLogoutStyles.style}
-          >
-            回首頁
-          </button>
-
+          <div className="d-flex gap-2">
+            <button
+              className="btn btn-light btn-sm px-3 mb-2"
+              onClick={() => navigate('/developer')}
+              style={Styles.homeLoginLogoutStyles.style}
+            >
+              上一頁
+            </button>
+            <button
+              className="btn btn-light btn-sm px-3 mb-2"
+              onClick={() => navigate('/')}
+              style={Styles.homeLoginLogoutStyles.style}
+            >
+              回首頁
+            </button>
+          </div>
           <h2 className="fs-5 m-0 font-weight-bold">內部開發者專區</h2>
         </div>
       </div>
 
-      <div className="container mt-4">
-        <h4>註冊新 Job</h4>
+      <div className="container mt-4" style={{ maxWidth: '760px' }}>
+        <h4>新增 Shell Script 任務</h4>
+        <input
+          type="text"
+          className="form-control mb-2"
+          placeholder="Job name"
+          value={jobName}
+          onChange={(e) => setJobName(e.target.value)}
+        />
+        <textarea
+          className="form-control mb-2"
+          rows={5}
+          placeholder="Shell command"
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+        />
         <div className="row">
-          <div className="col-md-6">
+          <div className="col-md-4">
+            <select
+              className="form-select mb-2"
+              value={scheduleType}
+              onChange={(e) => setScheduleType(e.target.value as ScheduleType)}
+            >
+              <option value="One-time">One-time</option>
+              <option value="Recurring">Recurring</option>
+            </select>
+          </div>
+          <div className="col-md-5">
             <input
               type="text"
               className="form-control mb-2"
-              placeholder="Method (ex: POST)"
-              value={method}
-              onChange={(e) => setMethod(e.target.value)}
+              placeholder="Cron expression"
+              value={cronExpression}
+              disabled={scheduleType !== 'Recurring'}
+              onChange={(e) => setCronExpression(e.target.value)}
             />
+          </div>
+          <div className="col-md-3">
             <input
-              type="text"
+              type="number"
               className="form-control mb-2"
-              placeholder="Endpoint (ex: /v1/run)"
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
+              min={1}
+              value={timeoutSeconds}
+              onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
             />
-            <textarea
-              className="form-control mb-2"
-              rows={6}
-              placeholder={`填入 JobBody JSON，例如:\n{\n  "command": "echo hello",\n  "schedule": "0 0 * * *",\n  "retry_policy": 3,\n  "timeout_seconds": 60\n}`}
-              value={jsonBody}
-              onChange={(e) => setJsonBody(e.target.value)}
-            />
-            <button onClick={handleSubmit} className="btn btn-success">
-              註冊 Job
-            </button>
           </div>
         </div>
+        <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
+          {loading ? '建立中...' : '註冊 Shell Script Job'}
+        </button>
       </div>
     </div>
   );

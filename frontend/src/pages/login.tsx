@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginStyles } from './Style';
-import { type Role, type User } from '../types/types';
+import { getStoredUser, storeUserFromTokenResponse } from '../api';
+import { type User, type TokenResponse } from '../types/types';
 
 type LoginStep =
   | 'checkId'
@@ -22,10 +23,10 @@ export const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
+    const savedUser = getStoredUser();
     if (savedUser) {
       console.log('偵測到已登入狀態，自動跳轉。');
-      const user: User = JSON.parse(savedUser);
+      const user: User = savedUser;
       if (user.role === 'developer') {
         navigate('/developer');
       } else if (user.role === 'operator') {
@@ -41,15 +42,6 @@ export const Login = () => {
     setCounter(0);
     setErrMessage('');
     setStep('checkId');
-  };
-
-  const backToHomeHandler = () => {
-    setCounter(0);
-    setId('');
-    setPassword('');
-    setErrMessage('');
-    setStep('checkId');
-    navigate('/');
   };
 
   const checkIdHandler = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -133,8 +125,8 @@ export const Login = () => {
         throw new Error('Password incorrect');
       }
 
-      const userData = await response.json();
-      localStorage.setItem('user', JSON.stringify(userData));
+      const userData = (await response.json()) as TokenResponse;
+      storeUserFromTokenResponse(userData);
 
       setStep('loginSuccess');
       setCounter(0);
@@ -192,9 +184,9 @@ export const Login = () => {
   useEffect(() => {
     if (step === 'loginSuccess') {
       const timer = setTimeout(() => {
-        const savedUser = localStorage.getItem('user');
+        const savedUser = getStoredUser();
         if (savedUser) {
-          const user: User = JSON.parse(savedUser);
+          const user: User = savedUser;
           if (user.role === 'developer') navigate('/developer');
           else if (user.role === 'operator') navigate('/operator');
           else if (user.role === 'admin') navigate('/admin');
