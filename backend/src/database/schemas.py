@@ -183,7 +183,7 @@ class JobResponse(JobBase):
     job_id: int
     owner_id: int
     status: JobStatus
-    next_run_time: Optional[datetime]
+    next_run_time: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -269,12 +269,12 @@ class ExecutionResponse(BaseModel):
     job_id: int
     trigger_type: TriggerType
     status: ExecutionStatus
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
-    duration: Optional[int]
-    worker_id: Optional[str]
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration: Optional[int] = None
+    worker_id: Optional[str] = None
     retry_count: int
-    error_message: Optional[str]
+    error_message: Optional[str] = None
     created_at: datetime
     log_reference: Optional[LogReferenceResponse] = None
 

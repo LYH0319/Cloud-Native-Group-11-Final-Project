@@ -1,4 +1,5 @@
 import pytest
+import math
 from pydantic import ValidationError
 
 from src.worker.schemas import HeartbeatState, TaskPayload
@@ -45,4 +46,4 @@ def test_heartbeat_state_defaults_progress_fields():
 
     assert heartbeat.status == "RUNNING"
     assert heartbeat.checkpoint_line == 0
-    assert heartbeat.percentage == 0.0
+    assert heartbeat.percentage == pytest.approx(0.0)
