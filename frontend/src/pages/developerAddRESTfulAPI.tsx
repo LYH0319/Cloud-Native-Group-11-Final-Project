@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
 import { createJob, listJobs } from '../api';
 import { type BackendJob, type JobBody, type JobCreatePayload } from '../types/types';
+import { DependencyPicker } from '../components/DependencyPicker';
+import { showNotification } from '../components/NotificationCenter';
 
 type HttpMethod = JobCreatePayload['method'];
 type ScheduleType = JobCreatePayload['schedule_type'];
@@ -60,10 +62,10 @@ export const DeveloperAddRESTfulAPI = () => {
       if (!res.ok) {
         throw new Error(data.detail || '建立失敗');
       }
-      alert(data.message || '建立成功');
+      showNotification(data.message || '建立成功', 'success');
       navigate('/developer');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'JSON 格式錯誤或連線失敗');
+      showNotification(err instanceof Error ? err.message : 'JSON 格式錯誤或連線失敗', 'error');
     } finally {
       setLoading(false);
     }
@@ -158,26 +160,12 @@ export const DeveloperAddRESTfulAPI = () => {
           onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
         />
         <label className="form-label">Depends on jobs</label>
-        <div className="border rounded p-2 mb-2 bg-white">
-          {availableJobs.length === 0 ? (
-            <div className="text-muted small">No active jobs available</div>
-          ) : (
-            availableJobs.map((job) => (
-              <div className="form-check" key={job.job_id}>
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id={`depends-rest-${job.job_id}`}
-                  checked={dependsOn.includes(job.job_id)}
-                  onChange={() => toggleDependency(job.job_id)}
-                />
-                <label className="form-check-label" htmlFor={`depends-rest-${job.job_id}`}>
-                  #{job.job_id} {job.job_name}
-                </label>
-              </div>
-            ))
-          )}
-        </div>
+        <DependencyPicker
+          jobs={availableJobs}
+          selectedIds={dependsOn}
+          idPrefix="depends-rest"
+          onToggle={toggleDependency}
+        />
         <label htmlFor="headers-json" className="form-label">
           Headers JSON
         </label>

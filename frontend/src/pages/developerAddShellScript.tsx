@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
 import { createJob, listJobs } from '../api';
 import { type BackendJob, type JobCreatePayload } from '../types/types';
+import { DependencyPicker } from '../components/DependencyPicker';
+import { showNotification } from '../components/NotificationCenter';
 
 type ScheduleType = JobCreatePayload['schedule_type'];
 
@@ -54,10 +56,10 @@ export const DeveloperAddShellScript = () => {
       if (!res.ok) {
         throw new Error(data.detail || '建立失敗');
       }
-      alert(data.message || '建立成功');
+      showNotification(data.message || '建立成功', 'success');
       navigate('/developer');
     } catch (err) {
-      alert(err instanceof Error ? err.message : '連線失敗');
+      showNotification(err instanceof Error ? err.message : '連線失敗', 'error');
     } finally {
       setLoading(false);
     }
@@ -136,26 +138,12 @@ export const DeveloperAddShellScript = () => {
           </div>
         </div>
         <label className="form-label">Depends on jobs</label>
-        <div className="border rounded p-2 mb-3 bg-white">
-          {availableJobs.length === 0 ? (
-            <div className="text-muted small">No active jobs available</div>
-          ) : (
-            availableJobs.map((job) => (
-              <div className="form-check" key={job.job_id}>
-                <input
-                  className="form-check-input"
-                  type="checkbox"
-                  id={`depends-shell-${job.job_id}`}
-                  checked={dependsOn.includes(job.job_id)}
-                  onChange={() => toggleDependency(job.job_id)}
-                />
-                <label className="form-check-label" htmlFor={`depends-shell-${job.job_id}`}>
-                  #{job.job_id} {job.job_name}
-                </label>
-              </div>
-            ))
-          )}
-        </div>
+        <DependencyPicker
+          jobs={availableJobs}
+          selectedIds={dependsOn}
+          idPrefix="depends-shell"
+          onToggle={toggleDependency}
+        />
         <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
           {loading ? '建立中...' : '註冊 Shell Script Job'}
         </button>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch, getStoredUser, roleFromBackend, roleToBackend } from '../api';
 import { type BackendUser, type Role } from '../types/types';
 import Styles from './Style';
+import { showNotification } from '../components/NotificationCenter';
 
 export const Admin = () => {
   const [users, setUsers] = useState<BackendUser[]>([]);
@@ -80,7 +81,7 @@ export const Admin = () => {
 
   const handleDelete = async (user: BackendUser) => {
     if (user.employee_id === currentUser?.employeeId) {
-      alert('不能刪除目前登入的帳號');
+      showNotification('不能刪除目前登入的帳號', 'error');
       return;
     }
     if (!window.confirm(`確定要刪除 ${user.employee_id} 嗎？`)) {
@@ -118,8 +119,8 @@ export const Admin = () => {
           <button
             className="btn btn-light btn-sm px-3 mb-2"
             onClick={() => {
-              alert('登出成功');
               localStorage.removeItem('user');
+              showNotification('登出成功', 'success');
               navigate('/');
             }}
             style={Styles.homeLoginLogoutStyles.style}

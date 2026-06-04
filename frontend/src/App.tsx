@@ -8,10 +8,12 @@ import { DeveloperJobs } from './pages/developerJobs';
 import { Operator } from './pages/operator';
 import { TestCreateUser } from './pages/testCreateUser';
 import { RouteGuard } from './components/routeGuard';
+import { NotificationCenter } from './components/NotificationCenter';
 
 const App = () => {
   return (
     <BrowserRouter>
+      <NotificationCenter />
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/test/create-user" element={<TestCreateUser />} />

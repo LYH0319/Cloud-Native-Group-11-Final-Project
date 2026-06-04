@@ -9,6 +9,7 @@ import {
   updateJobStatus
 } from '../api';
 import { type BackendJob, type ExecutionRecord } from '../types/types';
+import { showNotification } from '../components/NotificationCenter';
 import { operatorStyles } from './Style';
 import './JobMonitor.css';
 
@@ -38,6 +39,7 @@ const formatDate = (value?: string | null) => {
 };
 
 const latestExecution = (items: ExecutionRecord[] = []) => items[0] || null;
+const pageSizeOptions = [10, 20, 50] as const;
 
 const dependencyText = (job: BackendJob) =>
   job.depends_on && job.depends_on.length > 0
@@ -76,6 +78,9 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalJob, setModalJob] = useState<BackendJob | null>(null);
+  const [jobPageSize, setJobPageSize] = useState<(typeof pageSizeOptions)[number]>(10);
+  const [jobPage, setJobPage] = useState(1);
+  const [modalPageSize, setModalPageSize] = useState<(typeof pageSizeOptions)[number]>(10);
   const user = getStoredUser();
   const isOperator = scope === 'operator';
 
@@ -94,11 +99,22 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
     });
   }, [executionsByJob, jobs, jobStatusFilter, resultFilter, scheduleFilter, search]);
 
+  const totalJobPages = Math.max(1, Math.ceil(filteredJobs.length / jobPageSize));
+  const currentJobPage = Math.min(jobPage, totalJobPages);
+  const paginatedJobs = filteredJobs.slice(
+    (currentJobPage - 1) * jobPageSize,
+    currentJobPage * jobPageSize
+  );
+
+  useEffect(() => {
+    setJobPage(1);
+  }, [jobPageSize, jobStatusFilter, resultFilter, scheduleFilter, search]);
+
   const loadExecutionsForJobs = useCallback(async (jobList: BackendJob[]) => {
     const pairs = await Promise.all(
       jobList.map(async (job) => {
         try {
-          const history = await listJobExecutions(job.job_id);
+          const history = await listJobExecutions(job.job_id, 'limit=50');
           return [job.job_id, history.items] as const;
         } catch {
           return [job.job_id, []] as const;
@@ -116,7 +132,9 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
       setJobs(data);
       await loadExecutionsForJobs(data);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : '無法載入 Job');
+      const errorMessage = error instanceof Error ? error.message : '無法載入 Job';
+      setMessage(errorMessage);
+      showNotification(errorMessage, 'error');
     } finally {
       setLoading(false);
     }
@@ -131,9 +149,11 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
     if (!response.ok) {
       const data = await response.json();
       setMessage(data.detail || '手動觸發失敗');
+      showNotification(data.detail || '手動觸發失敗', 'error');
       return;
     }
     setMessage(`Job ${jobId} 已送出手動觸發`);
+    showNotification(`Job ${jobId} 已送出手動觸發`, 'success');
     loadJobs();
   };
 
@@ -143,9 +163,11 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
     if (!response.ok) {
       const data = await response.json();
       setMessage(data.detail || '狀態更新失敗');
+      showNotification(data.detail || '狀態更新失敗', 'error');
       return;
     }
     setMessage(`Job ${job.job_id} 已更新為 ${nextStatus}`);
+    showNotification(`Job ${job.job_id} 已更新為 ${nextStatus}`, 'success');
     loadJobs();
   };
 
@@ -154,9 +176,11 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
     if (!response.ok) {
       const data = await response.json();
       setMessage(data.detail || '重跑失敗');
+      showNotification(data.detail || '重跑失敗', 'error');
       return;
     }
     setMessage(`Execution ${execution.execution_id} 已排入重跑`);
+    showNotification(`Execution ${execution.execution_id} 已排入重跑`, 'success');
     loadJobs();
   };
 
@@ -181,6 +205,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
 
   const modalExecutions = modalJob ? executionsByJob[modalJob.job_id] || [] : [];
   const modalLatest = latestExecution(modalExecutions);
+  const visibleModalExecutions = modalExecutions.slice(0, modalPageSize);
 
   return (
     <div style={operatorStyles.container}>
@@ -255,6 +280,49 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
 
         {message && <div className="alert alert-info py-2">{message}</div>}
 
+        <div className="job-monitor-pagination">
+          <div className="job-monitor-page-note">
+            Showing {filteredJobs.length === 0 ? 0 : (currentJobPage - 1) * jobPageSize + 1}-
+            {Math.min(currentJobPage * jobPageSize, filteredJobs.length)} of {filteredJobs.length}{' '}
+            jobs
+          </div>
+          <div className="job-monitor-pagination-actions">
+            <label className="job-monitor-page-size">
+              <span>Rows per page</span>
+              <select
+                className="form-select form-select-sm"
+                value={jobPageSize}
+                onChange={(event) =>
+                  setJobPageSize(Number(event.target.value) as typeof jobPageSize)
+                }
+              >
+                {pageSizeOptions.map((option) => (
+                  <option value={option} key={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              disabled={currentJobPage <= 1}
+              onClick={() => setJobPage((page) => Math.max(1, page - 1))}
+            >
+              Previous
+            </button>
+            <span className="job-monitor-page-note">
+              {currentJobPage} / {totalJobPages}
+            </span>
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              disabled={currentJobPage >= totalJobPages}
+              onClick={() => setJobPage((page) => Math.min(totalJobPages, page + 1))}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
         <div className="table-responsive job-monitor-table">
           <table style={operatorStyles.jobTable}>
             <thead>
@@ -272,7 +340,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
               </tr>
             </thead>
             <tbody>
-              {filteredJobs.map((job) => {
+              {paginatedJobs.map((job) => {
                 const latest = latestExecution(executionsByJob[job.job_id]);
                 return (
                   <tr key={job.job_id}>
@@ -340,7 +408,7 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
         </div>
 
         <div className="job-monitor-cards">
-          {filteredJobs.map((job) => {
+          {paginatedJobs.map((job) => {
             const latest = latestExecution(executionsByJob[job.job_id]);
             return (
               <article className="job-monitor-card" key={job.job_id}>
@@ -461,6 +529,59 @@ export const JobMonitor = ({ scope }: JobMonitorProps) => {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {modalExecutions.length > 0 && (
+              <div className="mb-3">
+                <div className="job-monitor-modal-list-header">
+                  <strong>Execution history</strong>
+                  <label className="job-monitor-page-size">
+                    <span>Rows per page</span>
+                    <select
+                      className="form-select form-select-sm"
+                      value={modalPageSize}
+                      onChange={(event) =>
+                        setModalPageSize(Number(event.target.value) as typeof modalPageSize)
+                      }
+                    >
+                      {pageSizeOptions.map((option) => (
+                        <option value={option} key={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="table-responsive job-monitor-execution-list">
+                  <table className="table table-sm mb-0">
+                    <thead>
+                      <tr>
+                        <th>Execution</th>
+                        <th>Status</th>
+                        <th>Trigger</th>
+                        <th>Created</th>
+                        <th>Duration</th>
+                        <th>Retry</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleModalExecutions.map((execution) => (
+                        <tr key={execution.execution_id}>
+                          <td>#{execution.execution_id}</td>
+                          <td>{execution.status}</td>
+                          <td>{execution.trigger_type}</td>
+                          <td>{formatDate(execution.created_at)}</td>
+                          <td>{formatDuration(execution.duration)}</td>
+                          <td>{execution.retry_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="job-monitor-page-note">
+                  Showing {visibleModalExecutions.length} of {modalExecutions.length} loaded records
                 </div>
               </div>
             )}

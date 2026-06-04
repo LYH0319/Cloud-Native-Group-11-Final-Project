@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
+import { showNotification } from '../components/NotificationCenter';
 
 export const DeveloperHome = () => {
   const navigate = useNavigate();
@@ -12,8 +13,8 @@ export const DeveloperHome = () => {
           <button
             className="btn btn-light btn-sm px-3 mb-2"
             onClick={() => {
-              alert('已登出');
               localStorage.removeItem('user');
+              showNotification('已登出', 'success');
               navigate('/');
             }}
             style={Styles.homeLoginLogoutStyles.style}

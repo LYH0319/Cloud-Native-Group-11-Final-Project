@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import Styles from './Style';
 import { type User } from '../types/types';
+import { showNotification } from '../components/NotificationCenter';
 
 export const Home = () => {
   const navigate = useNavigate();
@@ -8,9 +9,9 @@ export const Home = () => {
   const user: User | null = userData ? JSON.parse(userData) : null;
 
   const handleLogout = () => {
-    alert('登出成功！');
     localStorage.removeItem('user');
-    window.location.reload();
+    showNotification('登出成功', 'success');
+    navigate('/');
   };
 
   return (
