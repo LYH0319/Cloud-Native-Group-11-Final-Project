@@ -455,7 +455,11 @@ export const Login = () => {
             {/* 右側：動態表單區塊 */}
             <div className="login-form-panel" style={loginStyles.rightPanel}>
               {step === 'checkId' && (
-                <form className="login-form" onSubmit={checkIdHandler} style={loginStyles.formContainer}>
+                <form
+                  className="login-form"
+                  onSubmit={checkIdHandler}
+                  style={loginStyles.formContainer}
+                >
                   <div className="login-title" style={loginStyles.title}>
                     歡迎使用
                   </div>
