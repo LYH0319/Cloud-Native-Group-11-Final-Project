@@ -15,10 +15,11 @@
 
 ### 2. 準備後端環境變數
 
-在專案根目錄確認 `backend/.env` 存在。若尚未建立，可由範例檔複製：
+在專案根目錄確認 `backend/.env` 以及 `.env` 存在。若尚未建立，可由範例檔複製：
 
 ```bash
 copy backend\.env.example backend\.env
+copy .\.env.example .\.env
 ```
 
 Docker Compose 會使用 `backend/.env` 啟動 MySQL 與後端服務。Docker 環境中的 `DATABASE_URL` 應指向 Compose service name `db`，例如：
