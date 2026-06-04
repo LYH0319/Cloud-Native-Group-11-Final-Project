@@ -252,8 +252,15 @@ export const Login = () => {
   }, [step, navigate]);
 
   return (
-    <div style={loginStyles.pageContainer}>
+    <div className="login-page" style={loginStyles.pageContainer}>
       <style>{`
+          .login-page,
+          .login-shell,
+          .login-white-gap,
+          .login-frame {
+            max-width: 100%;
+          }
+
           .custom-btn {
             transition: filter 0.2s ease, transform 0.1s ease;
           }
@@ -273,28 +280,192 @@ export const Login = () => {
             transition: opacity 0.2s ease;
           }
           .link-btn:hover { text-decoration: underline; opacity: 0.8; }
+
+          @media (max-width: 900px) {
+            .login-page {
+              height: auto !important;
+              min-height: 100svh !important;
+              overflow-y: auto !important;
+              align-items: stretch !important;
+            }
+
+            .login-shell {
+              height: auto !important;
+              min-height: 100svh !important;
+              padding: 18px !important;
+            }
+
+            .login-white-gap {
+              height: auto !important;
+              min-height: calc(100svh - 36px) !important;
+              padding: 14px !important;
+            }
+
+            .login-frame {
+              height: auto !important;
+              min-height: calc(100svh - 64px) !important;
+              flex-direction: column !important;
+              align-items: stretch !important;
+              justify-content: center !important;
+              gap: 24px !important;
+              padding: 22px !important;
+            }
+
+            .login-brand-panel,
+            .login-form-panel {
+              width: 100% !important;
+              height: auto !important;
+            }
+
+            .login-brand-box {
+              width: 100% !important;
+              height: auto !important;
+              min-height: 130px !important;
+              padding: 18px 12px !important;
+              flex-direction: row !important;
+              flex-wrap: wrap !important;
+              gap: 8px 16px !important;
+            }
+
+            .login-brand-text {
+              width: auto !important;
+              margin: 0 !important;
+              font-size: 34px !important;
+              line-height: 1.1 !important;
+            }
+
+            .login-form-panel {
+              justify-content: flex-start !important;
+              padding-left: 0 !important;
+              padding-right: 0 !important;
+            }
+
+            .login-title {
+              font-size: 28px !important;
+              line-height: 1.25 !important;
+            }
+
+            .login-input {
+              font-size: 18px !important;
+              padding: 13px 16px !important;
+            }
+
+            .login-actions {
+              justify-content: stretch !important;
+            }
+
+            .login-actions .custom-btn {
+              flex: 1 1 0;
+              min-width: 0;
+            }
+
+            .login-forgot {
+              position: static !important;
+              margin-top: 18px !important;
+              text-align: right !important;
+            }
+          }
+
+          @media (max-width: 560px) {
+            .login-shell {
+              padding: 10px !important;
+            }
+
+            .login-white-gap {
+              min-height: calc(100svh - 20px) !important;
+              padding: 8px !important;
+            }
+
+            .login-frame {
+              min-height: calc(100svh - 36px) !important;
+              border-width: 5px !important;
+              padding: 18px 14px !important;
+              gap: 20px !important;
+            }
+
+            .login-brand-box {
+              min-height: 96px !important;
+              padding: 14px 10px !important;
+              border-width: 4px !important;
+              outline-width: 4px !important;
+              gap: 6px 10px !important;
+            }
+
+            .login-brand-text {
+              font-size: 25px !important;
+            }
+
+            .login-title {
+              font-size: 24px !important;
+              margin-bottom: 14px !important;
+            }
+
+            .login-subtitle,
+            .login-success-text {
+              font-size: 14px !important;
+              line-height: 1.5 !important;
+            }
+
+            .login-input {
+              font-size: 16px !important;
+              padding: 12px 14px !important;
+            }
+
+            .login-actions {
+              flex-direction: column-reverse !important;
+              gap: 10px !important;
+            }
+
+            .login-actions .custom-btn,
+            .login-success .custom-btn {
+              width: 100% !important;
+              box-sizing: border-box !important;
+            }
+
+            .custom-btn {
+              font-size: 16px !important;
+              padding: 11px 18px !important;
+            }
+
+            .login-forgot {
+              text-align: center !important;
+            }
+          }
         `}</style>
 
-      <div style={loginStyles.outerBox}>
-        <div style={loginStyles.whiteGap}>
-          <div style={loginStyles.innerBorder}>
+      <div className="login-shell" style={loginStyles.outerBox}>
+        <div className="login-white-gap" style={loginStyles.whiteGap}>
+          <div className="login-frame" style={loginStyles.innerBorder}>
             {/* 左側：系統名稱區塊 */}
-            <div style={loginStyles.leftPanel}>
-              <div style={loginStyles.leftBox}>
+            <div className="login-brand-panel" style={loginStyles.leftPanel}>
+              <div className="login-brand-box" style={loginStyles.leftBox}>
                 {/* 改用 div 替代 h1，避免瀏覽器預設的 margin 撐開間距 */}
-                <div style={loginStyles.leftBoxText}>Job</div>
-                <div style={loginStyles.leftBoxText}>Scheduler</div>
-                <div style={loginStyles.leftBoxText}>System</div>
+                <div className="login-brand-text" style={loginStyles.leftBoxText}>
+                  Job
+                </div>
+                <div className="login-brand-text" style={loginStyles.leftBoxText}>
+                  Scheduler
+                </div>
+                <div className="login-brand-text" style={loginStyles.leftBoxText}>
+                  System
+                </div>
               </div>
             </div>
 
             {/* 右側：動態表單區塊 */}
-            <div style={loginStyles.rightPanel}>
+            <div className="login-form-panel" style={loginStyles.rightPanel}>
               {step === 'checkId' && (
-                <form onSubmit={checkIdHandler} style={loginStyles.formContainer}>
-                  <div style={loginStyles.title}>歡迎使用</div>
+                <form
+                  className="login-form"
+                  onSubmit={checkIdHandler}
+                  style={loginStyles.formContainer}
+                >
+                  <div className="login-title" style={loginStyles.title}>
+                    歡迎使用
+                  </div>
                   <input
                     type="text"
+                    className="login-input"
                     style={loginStyles.input}
                     placeholder="輸入您的員工編號"
                     value={id}
@@ -304,7 +475,7 @@ export const Login = () => {
 
                   {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
 
-                  <div style={loginStyles.buttonContainer}>
+                  <div className="login-actions" style={loginStyles.buttonContainer}>
                     <button
                       type="submit"
                       className="custom-btn"
@@ -318,12 +489,17 @@ export const Login = () => {
               )}
 
               {step === 'registerPassword' && (
-                <form onSubmit={registerPasswordHandler} style={loginStyles.formContainer}>
-                  <div style={{ ...loginStyles.title, fontSize: '24px' }}>
+                <form
+                  className="login-form"
+                  onSubmit={registerPasswordHandler}
+                  style={loginStyles.formContainer}
+                >
+                  <div className="login-title" style={{ ...loginStyles.title, fontSize: '24px' }}>
                     Hi~ 員工{id}！歡迎使用
                   </div>
                   <input
                     type="password"
+                    className="login-input"
                     style={loginStyles.input}
                     placeholder="輸入您的新密碼"
                     value={password}
@@ -333,7 +509,7 @@ export const Login = () => {
 
                   {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
 
-                  <div style={loginStyles.buttonContainer}>
+                  <div className="login-actions" style={loginStyles.buttonContainer}>
                     <button
                       type="button"
                       className="custom-btn"
@@ -356,7 +532,7 @@ export const Login = () => {
               )}
 
               {step === 'registerSuccess' && (
-                <div style={loginStyles.successContainer}>
+                <div className="login-success" style={loginStyles.successContainer}>
                   <div style={loginStyles.successIcon}>
                     <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
                       <circle cx="32" cy="32" r="32" fill="#198754" />
@@ -369,19 +545,30 @@ export const Login = () => {
                       />
                     </svg>
                   </div>
-                  <h3 style={loginStyles.successTitle}>密碼設定成功！</h3>
-                  <p style={loginStyles.successText}>請再次輸入密碼登入系統</p>
+                  <h3 className="login-title" style={loginStyles.successTitle}>
+                    密碼設定成功！
+                  </h3>
+                  <p className="login-success-text" style={loginStyles.successText}>
+                    請再次輸入密碼登入系統
+                  </p>
                 </div>
               )}
 
               {step === 'forgotPassword' && (
-                <form onSubmit={forgotPasswordHandler} style={loginStyles.formContainer}>
-                  <div style={loginStyles.title}>忘記密碼</div>
-                  <p style={loginStyles.subtitle}>
+                <form
+                  className="login-form"
+                  onSubmit={forgotPasswordHandler}
+                  style={loginStyles.formContainer}
+                >
+                  <div className="login-title" style={loginStyles.title}>
+                    忘記密碼
+                  </div>
+                  <p className="login-subtitle" style={loginStyles.subtitle}>
                     請輸入員工編號，我們會將密碼重設連結寄到帳號綁定的 email。
                   </p>
                   <input
                     type="text"
+                    className="login-input"
                     style={loginStyles.input}
                     placeholder="輸入您的員工編號"
                     value={id}
@@ -391,7 +578,7 @@ export const Login = () => {
 
                   {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
 
-                  <div style={loginStyles.buttonContainer}>
+                  <div className="login-actions" style={loginStyles.buttonContainer}>
                     <button
                       type="button"
                       className="custom-btn"
@@ -414,9 +601,11 @@ export const Login = () => {
               )}
 
               {step === 'forgotSent' && (
-                <div style={loginStyles.successContainer}>
-                  <h3 style={loginStyles.successTitle}>重設連結已寄出</h3>
-                  <p style={loginStyles.successText}>
+                <div className="login-success" style={loginStyles.successContainer}>
+                  <h3 className="login-title" style={loginStyles.successTitle}>
+                    重設連結已寄出
+                  </h3>
+                  <p className="login-success-text" style={loginStyles.successText}>
                     請到帳號綁定的 email 收信，並使用信中的連結重設密碼。
                   </p>
                   <button
@@ -431,10 +620,17 @@ export const Login = () => {
               )}
 
               {step === 'loginPassword' && (
-                <form onSubmit={loginPasswordHandler} style={loginStyles.formContainer}>
-                  <div style={loginStyles.title}>歡迎回來！員工 {id}</div>
+                <form
+                  className="login-form"
+                  onSubmit={loginPasswordHandler}
+                  style={loginStyles.formContainer}
+                >
+                  <div className="login-title" style={loginStyles.title}>
+                    歡迎回來！員工 {id}
+                  </div>
                   <input
                     type="password"
+                    className="login-input"
                     style={loginStyles.input}
                     placeholder="輸入您的密碼"
                     value={password}
@@ -444,7 +640,7 @@ export const Login = () => {
 
                   {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
 
-                  <div style={loginStyles.buttonContainer}>
+                  <div className="login-actions" style={loginStyles.buttonContainer}>
                     <button
                       type="button"
                       className="custom-btn"
@@ -467,11 +663,20 @@ export const Login = () => {
               )}
 
               {step === 'resetPassword' && (
-                <form onSubmit={resetPasswordHandler} style={loginStyles.formContainer}>
-                  <div style={loginStyles.title}>重新設定密碼</div>
-                  <p style={loginStyles.subtitle}>請輸入新的密碼，完成後即可回到登入頁。</p>
+                <form
+                  className="login-form"
+                  onSubmit={resetPasswordHandler}
+                  style={loginStyles.formContainer}
+                >
+                  <div className="login-title" style={loginStyles.title}>
+                    重新設定密碼
+                  </div>
+                  <p className="login-subtitle" style={loginStyles.subtitle}>
+                    請輸入新的密碼，完成後即可回到登入頁。
+                  </p>
                   <input
                     type="password"
+                    className="login-input"
                     style={loginStyles.input}
                     placeholder="輸入您的新密碼"
                     value={password}
@@ -481,7 +686,7 @@ export const Login = () => {
 
                   {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
 
-                  <div style={loginStyles.buttonContainer}>
+                  <div className="login-actions" style={loginStyles.buttonContainer}>
                     <button
                       type="button"
                       className="custom-btn"
@@ -515,7 +720,7 @@ export const Login = () => {
               )}
 
               {step === 'resetSuccess' && (
-                <div style={loginStyles.successContainer}>
+                <div className="login-success" style={loginStyles.successContainer}>
                   <div style={loginStyles.successIcon}>
                     <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
                       <circle cx="32" cy="32" r="32" fill="#198754" />
@@ -528,22 +733,30 @@ export const Login = () => {
                       />
                     </svg>
                   </div>
-                  <h3 style={loginStyles.successTitle}>密碼重設成功！</h3>
-                  <p style={loginStyles.successText}>請使用新密碼重新登入...</p>
+                  <h3 className="login-title" style={loginStyles.successTitle}>
+                    密碼重設成功！
+                  </h3>
+                  <p className="login-success-text" style={loginStyles.successText}>
+                    請使用新密碼重新登入...
+                  </p>
                 </div>
               )}
 
               {step === 'loginSuccess' && (
-                <div style={loginStyles.successContainer}>
-                  <h3 style={loginStyles.successTitle}>登入成功！</h3>
-                  <p style={loginStyles.successText}>正在為您導向主頁，請稍候...</p>
+                <div className="login-success" style={loginStyles.successContainer}>
+                  <h3 className="login-title" style={loginStyles.successTitle}>
+                    登入成功！
+                  </h3>
+                  <p className="login-success-text" style={loginStyles.successText}>
+                    正在為您導向主頁，請稍候...
+                  </p>
                 </div>
               )}
             </div>
 
             {/* 絕對定位的右下角「忘記密碼」區塊 */}
             {(step === 'checkId' || step === 'loginPassword') && (
-              <div style={loginStyles.forgotPasswordContainer}>
+              <div className="login-forgot" style={loginStyles.forgotPasswordContainer}>
                 <button
                   type="button"
                   className="link-btn"
