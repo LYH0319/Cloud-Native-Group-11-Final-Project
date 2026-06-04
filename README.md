@@ -68,8 +68,8 @@ docker compose up -d --build
 | `backend` | FastAPI 後端 API | `http://localhost:8000` |
 | `db` | MySQL 8.4 | 僅 Compose 內部網路 |
 | `redis` | Redis queue | 僅 Compose 內部網路 |
-| `backend-worker` | 任務執行 Worker | 僅 Compose 內部網路 |
-| `backend-scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
+| `worker` | 任務執行 Worker | 僅 Compose 內部網路 |
+| `scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
 
 開啟前端：
 
@@ -108,7 +108,7 @@ docker compose logs
 docker compose logs backend
 
 # 查看 worker log
-docker compose logs backend-worker
+docker compose logs worker
 
 # 重新 build 並啟動
 docker compose up -d --build
@@ -123,7 +123,7 @@ docker compose down
 若要同時啟動多個 worker：
 
 ```bash
-docker compose up -d --build --scale backend-worker=3
+docker compose up -d --build --scale worker=3
 ```
 
 ## 本機開發啟動方式
