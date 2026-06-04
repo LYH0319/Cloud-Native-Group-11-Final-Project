@@ -15,10 +15,11 @@
 
 ### 2. 準備後端環境變數
 
-在專案根目錄確認 `backend/.env` 存在。若尚未建立，可由範例檔複製：
+在專案根目錄確認 `backend/.env` 以及 `.env` 存在。若尚未建立，可由範例檔複製：
 
 ```bash
 copy backend\.env.example backend\.env
+copy .\.env.example .\.env
 ```
 
 Docker Compose 會使用 `backend/.env` 啟動 MySQL 與後端服務。Docker 環境中的 `DATABASE_URL` 應指向 Compose service name `db`，例如：
@@ -68,8 +69,8 @@ docker compose up -d --build
 | `backend` | FastAPI 後端 API | `http://localhost:8000` |
 | `db` | MySQL 8.4 | 僅 Compose 內部網路 |
 | `redis` | Redis queue | 僅 Compose 內部網路 |
-| `backend-worker` | 任務執行 Worker | 僅 Compose 內部網路 |
-| `backend-scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
+| `worker` | 任務執行 Worker | 僅 Compose 內部網路 |
+| `scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
 
 開啟前端：
 
@@ -108,7 +109,7 @@ docker compose logs
 docker compose logs backend
 
 # 查看 worker log
-docker compose logs backend-worker
+docker compose logs worker
 
 # 重新 build 並啟動
 docker compose up -d --build
@@ -123,7 +124,7 @@ docker compose down
 若要同時啟動多個 worker：
 
 ```bash
-docker compose up -d --build --scale backend-worker=3
+docker compose up -d --build --scale worker=3
 ```
 
 ## 本機開發啟動方式
