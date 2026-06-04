@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   frontend:
     # 告訴 Compose 去 frontend 資料夾找 Dockerfile 來 Build
@@ -33,6 +31,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
+    # The host-mounted ./logs directory can be owned outside the container.
+    # Run workers as root so scaled workers can always create/update log files.
+    user: root
     volumes:
       - ./backend:/app
       - ./logs:/app/logs
