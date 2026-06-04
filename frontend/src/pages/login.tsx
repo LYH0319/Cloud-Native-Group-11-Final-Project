@@ -6,6 +6,8 @@ import { type User, type TokenResponse } from '../types/types';
 
 type LoginStep =
   | 'checkId'
+  | 'forgotPassword'
+  | 'forgotSent'
   | 'registerPassword'
   | 'registerSuccess'
   | 'loginPassword'
@@ -17,12 +19,20 @@ export const Login = () => {
   const [step, setStep] = useState<LoginStep>('checkId');
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [counter, setCounter] = useState(0);
   const [errMessage, setErrMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('reset_token');
+    if (token) {
+      setResetToken(token);
+      setStep('resetPassword');
+      return;
+    }
+
     const savedUser = getStoredUser();
     if (savedUser) {
       console.log('偵測到已登入狀態，自動跳轉。');
@@ -144,27 +154,72 @@ export const Login = () => {
     }
   };
 
+  const forgotPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrMessage('');
+
+    const trimmedId = id.trim();
+    setId(trimmedId);
+
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: trimmedId })
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Can not find ID');
+      }
+
+      if (data.status === 'missing_email') {
+        setErrMessage('此帳號未綁定 email，請聯絡管理員重設密碼');
+        return;
+      }
+
+      setStep('forgotSent');
+    } catch (error) {
+      setErrMessage(error instanceof Error ? error.message : '忘記密碼流程失敗，請稍後再試');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetPasswordHandler = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setErrMessage('');
 
+    if (!resetToken) {
+      setErrMessage('重設連結無效，請重新申請忘記密碼');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employee_id: id, new_password: password })
+        body: JSON.stringify({ token: resetToken, new_password: password })
       });
 
       if (!response.ok) {
         throw new Error('Reset password failed');
       }
 
+      const data = await response.json();
+      if (data.employee_id) {
+        setId(data.employee_id);
+      }
       setPassword('');
       setStep('resetSuccess');
       setCounter(0);
+      window.history.replaceState({}, document.title, window.location.pathname);
     } catch (error) {
-      setErrMessage('重設密碼失敗！請再試一次');
+      setErrMessage('重設密碼失敗！請確認連結是否過期，或重新申請一次');
       setPassword('');
       console.error(error);
     } finally {
@@ -175,11 +230,11 @@ export const Login = () => {
   useEffect(() => {
     if (step === 'registerSuccess' || step === 'resetSuccess') {
       const timer = setTimeout(() => {
-        setStep('loginPassword');
+        setStep(id ? 'loginPassword' : 'checkId');
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [step]);
+  }, [id, step]);
 
   useEffect(() => {
     if (step === 'loginSuccess') {
@@ -319,6 +374,62 @@ export const Login = () => {
                 </div>
               )}
 
+              {step === 'forgotPassword' && (
+                <form onSubmit={forgotPasswordHandler} style={loginStyles.formContainer}>
+                  <div style={loginStyles.title}>忘記密碼</div>
+                  <p style={loginStyles.subtitle}>
+                    請輸入員工編號，我們會將密碼重設連結寄到帳號綁定的 email。
+                  </p>
+                  <input
+                    type="text"
+                    style={loginStyles.input}
+                    placeholder="輸入您的員工編號"
+                    value={id}
+                    onChange={(e) => setId(e.target.value)}
+                    required
+                  />
+
+                  {errMessage && <div style={loginStyles.errorMsg}>{errMessage}</div>}
+
+                  <div style={loginStyles.buttonContainer}>
+                    <button
+                      type="button"
+                      className="custom-btn"
+                      style={loginStyles.primaryBtn}
+                      onClick={backToIdHandler}
+                      disabled={loading}
+                    >
+                      上一步
+                    </button>
+                    <button
+                      type="submit"
+                      className="custom-btn"
+                      style={loginStyles.primaryBtn}
+                      disabled={loading}
+                    >
+                      {loading ? '處理中...' : '寄送連結'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {step === 'forgotSent' && (
+                <div style={loginStyles.successContainer}>
+                  <h3 style={loginStyles.successTitle}>重設連結已寄出</h3>
+                  <p style={loginStyles.successText}>
+                    請到帳號綁定的 email 收信，並使用信中的連結重設密碼。
+                  </p>
+                  <button
+                    type="button"
+                    className="custom-btn"
+                    style={{ ...loginStyles.primaryBtn, marginTop: '20px' }}
+                    onClick={backToIdHandler}
+                  >
+                    回登入頁
+                  </button>
+                </div>
+              )}
+
               {step === 'loginPassword' && (
                 <form onSubmit={loginPasswordHandler} style={loginStyles.formContainer}>
                   <div style={loginStyles.title}>歡迎回來！員工 {id}</div>
@@ -357,9 +468,8 @@ export const Login = () => {
 
               {step === 'resetPassword' && (
                 <form onSubmit={resetPasswordHandler} style={loginStyles.formContainer}>
-                  <div style={loginStyles.title}>
-                    重新設定員工 <strong>{id}</strong> 的密碼
-                  </div>
+                  <div style={loginStyles.title}>重新設定密碼</div>
+                  <p style={loginStyles.subtitle}>請輸入新的密碼，完成後即可回到登入頁。</p>
                   <input
                     type="password"
                     style={loginStyles.input}
@@ -379,7 +489,9 @@ export const Login = () => {
                       onClick={() => {
                         setPassword('');
                         setErrMessage('');
-                        setStep('loginPassword');
+                        setResetToken('');
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        setStep(id ? 'loginPassword' : 'checkId');
                         setCounter(0);
                       }}
                       disabled={loading}
@@ -432,13 +544,9 @@ export const Login = () => {
                   type="button"
                   className="link-btn"
                   onClick={() => {
-                    if (!id) {
-                      setErrMessage('請先輸入員工編號，再點擊忘記密碼');
-                      return;
-                    }
                     setPassword('');
                     setErrMessage('');
-                    setStep('resetPassword');
+                    setStep('forgotPassword');
                   }}
                 >
                   忘記密碼?

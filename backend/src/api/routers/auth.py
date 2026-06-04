@@ -1,3 +1,5 @@
+import os
+from datetime import timedelta
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -13,8 +15,10 @@ from src.database.models import User, UserRole
 from src.utils.security import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
+    decode_access_token,
     hash_password,
 )
+from src.utils.email import send_password_reset_email
 
 ERROR_USER_NOT_FOUND = "Can not find ID"
 
@@ -32,6 +36,12 @@ def _build_token_response(user: User) -> dict:
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         "user": user,
     }
+
+
+def _build_reset_link(token: str) -> str:
+    base_url = os.getenv("RESET_PASSWORD_BASE_URL", "http://localhost:3000")
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}reset_token={token}"
 
 
 def _require_admin(current_user: User) -> None:
@@ -162,17 +172,92 @@ def login_password(
     return _build_token_response(user)
 
 
-@router.post("/reset-password")
-def reset_password(
-    request: schemas.ResetPasswordRequest,
-    db: Annotated[Session, Depends(get_db)] = None,   
+@router.post("/forgot-password", response_model=schemas.ForgotPasswordResponse)
+def forgot_password(
+    request: schemas.ForgotPasswordRequest,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
-    """Reset an existing employee account password."""
+    """Start password reset by emailing a short-lived reset token."""
     user = crud.get_user_by_employee_id(db=db, employee_id=request.employee_id)
-    if user is None:
+    if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ERROR_USER_NOT_FOUND,
+        )
+
+    if not user.email:
+        return {
+            "status": "missing_email",
+            "message": "此帳號未綁定 email，請聯絡管理員重設密碼",
+        }
+
+    token = create_access_token(
+        subject=str(user.user_id),
+        expires_delta=timedelta(minutes=30),
+        extra_claims={"purpose": "password_reset"},
+    )
+    try:
+        send_password_reset_email(user.email, _build_reset_link(token))
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="SMTP email delivery failed. Please check SMTP_USERNAME and SMTP_PASSWORD.",
+        ) from error
+    return {
+        "status": "sent",
+        "message": "密碼重設連結已寄到帳號綁定的 email",
+    }
+
+
+@router.post("/reset-password")
+def reset_password_with_token(
+    request: schemas.TokenResetPasswordRequest,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """Reset a password with a valid email reset token."""
+    try:
+        payload = decode_access_token(request.token)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        ) from error
+
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token",
+        )
+
+    user = crud.get_user_by_user_id(db=db, user_id=int(payload["sub"]))
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.hashed_password = hash_password(request.new_password)
+    db.commit()
+    return {
+        "message": "Password reset successfully",
+        "employee_id": user.employee_id,
+    }
+
+
+@router.patch("/users/{user_id}/password")
+def admin_reset_user_password(
+    user_id: int,
+    request: schemas.AdminResetPasswordRequest,
+    db: Annotated[Session, Depends(get_db)] = None,
+    current_user: Annotated[User, Depends(get_current_user)] = None,
+):
+    """Allow admins to reset a user's password from the admin page."""
+    _require_admin(current_user)
+    user = crud.get_user_by_user_id(db=db, user_id=user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
         )
 
     user.hashed_password = hash_password(request.new_password)

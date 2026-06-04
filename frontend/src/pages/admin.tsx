@@ -11,6 +11,8 @@ export const Admin = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('secret123');
+  const [resetTarget, setResetTarget] = useState<BackendUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
   const [role, setRole] = useState<Role>('developer');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -107,6 +109,36 @@ export const Admin = () => {
     } catch (error: unknown) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : '伺服器連線錯誤');
+    }
+  };
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTarget) return;
+
+    setLoading(true);
+    setMessage('');
+    setIsError(false);
+
+    try {
+      const response = await apiFetch(`/auth/users/${resetTarget.user_id}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ new_password: resetPassword })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || '重設密碼失敗');
+      }
+
+      setIsError(false);
+      setMessage(`已重設 ${resetTarget.employee_id} 的密碼`);
+      setResetTarget(null);
+      setResetPassword('');
+    } catch (error: unknown) {
+      setIsError(true);
+      setMessage(error instanceof Error ? error.message : '伺服器連線錯誤');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -217,6 +249,45 @@ export const Admin = () => {
                 重新整理
               </button>
             </div>
+            {resetTarget && (
+              <form
+                onSubmit={handleAdminResetPassword}
+                className="bg-white shadow-sm rounded p-3 mb-3"
+              >
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
+                  <div>
+                    <strong>重設密碼</strong>
+                    <div className="text-muted small">
+                      {resetTarget.employee_id} / {resetTarget.username}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      setResetTarget(null);
+                      setResetPassword('');
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+                <div className="d-flex flex-column flex-sm-row gap-2">
+                  <input
+                    type="password"
+                    className="form-control"
+                    placeholder="輸入新密碼，至少 6 碼"
+                    minLength={6}
+                    value={resetPassword}
+                    onChange={(event) => setResetPassword(event.target.value)}
+                    required
+                  />
+                  <button className="btn btn-primary" disabled={loading} type="submit">
+                    {loading ? '處理中...' : '確認重設'}
+                  </button>
+                </div>
+              </form>
+            )}
             <div className="table-responsive bg-white shadow-sm rounded">
               <table className="table table-hover mb-0">
                 <thead>
@@ -225,7 +296,7 @@ export const Admin = () => {
                     <th>姓名</th>
                     <th>角色</th>
                     <th>Email</th>
-                    <th style={{ width: '90px' }}>操作</th>
+                    <th style={{ width: '160px' }}>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,13 +307,24 @@ export const Admin = () => {
                       <td>{roleFromBackend(user.role)}</td>
                       <td>{user.email || '-'}</td>
                       <td>
-                        <button
-                          className="btn btn-outline-danger btn-sm"
-                          onClick={() => handleDelete(user)}
-                          disabled={user.employee_id === 'admin'}
-                        >
-                          刪除
-                        </button>
+                        <div className="d-flex flex-wrap gap-2">
+                          <button
+                            className="btn btn-outline-primary btn-sm"
+                            onClick={() => {
+                              setResetTarget(user);
+                              setResetPassword('');
+                            }}
+                          >
+                            重設密碼
+                          </button>
+                          <button
+                            className="btn btn-outline-danger btn-sm"
+                            onClick={() => handleDelete(user)}
+                            disabled={user.employee_id === 'admin'}
+                          >
+                            刪除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

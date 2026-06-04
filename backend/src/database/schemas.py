@@ -89,6 +89,31 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    employee_id: str = Field(..., min_length=1, max_length=20)
+
+    @field_validator("employee_id", mode="before")
+    @classmethod
+    def normalize_employee_id(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ForgotPasswordResponse(BaseModel):
+    status: str
+    message: str
+
+
+class TokenResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 class UserRead(UserResponse):
     """Public user response. Never includes hashed_password."""
 

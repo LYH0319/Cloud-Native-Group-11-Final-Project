@@ -379,6 +379,106 @@ def test_auth_login_invalid_password_fails(client):
     assert response.status_code == 401
 
 
+@patch("src.api.routers.auth.send_password_reset_email")
+def test_forgot_password_sends_email_for_account_with_email(
+    mock_send_email,
+    client,
+):
+    client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "forgot_user_1",
+            "username": "ForgotUserOne",
+            "email": "forgot1@example.com",
+            "password": "secret123",
+        },
+    )
+
+    response = client.post(
+        "/api/auth/forgot-password",
+        json={"employee_id": "forgot_user_1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "sent"
+    mock_send_email.assert_called_once()
+    assert mock_send_email.call_args.args[0] == "forgot1@example.com"
+    assert "reset_token=" in mock_send_email.call_args.args[1]
+
+
+def test_forgot_password_reports_missing_email(client):
+    client.post(
+        "/api/auth/register",
+        json={
+            "employee_id": "forgot_user_2",
+            "username": "ForgotUserTwo",
+            "password": "secret123",
+        },
+    )
+
+    response = client.post(
+        "/api/auth/forgot-password",
+        json={"employee_id": "forgot_user_2"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "missing_email"
+
+
+def test_reset_password_requires_valid_reset_token(client, api_db_session):
+    user = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="forgot_user_3",
+            username="ForgotUserThree",
+            email="forgot3@example.com",
+            password="oldsecret",
+        ),
+    )
+    token = create_access_token(
+        subject=str(user.user_id),
+        extra_claims={"purpose": "password_reset"},
+    )
+
+    response = client.post(
+        "/api/auth/reset-password",
+        json={"token": token, "new_password": "newsecret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["employee_id"] == "forgot_user_3"
+    login = client.post(
+        "/api/auth/login-password",
+        json={"employee_id": "forgot_user_3", "password": "newsecret"},
+    )
+    assert login.status_code == 200
+
+
+def test_admin_can_reset_user_password(client, api_db_session):
+    admin = _create_test_admin(api_db_session)
+    user = crud.create_user(
+        db=api_db_session,
+        user_in=schemas.UserCreate(
+            employee_id="managed_reset_1",
+            username="ManagedResetOne",
+            password="oldsecret",
+        ),
+    )
+
+    response = client.patch(
+        f"/api/auth/users/{user.user_id}/password",
+        json={"new_password": "newsecret"},
+        headers=_auth_headers_for_user(admin),
+    )
+
+    assert response.status_code == 200
+    login = client.post(
+        "/api/auth/login-password",
+        json={"employee_id": "managed_reset_1", "password": "newsecret"},
+    )
+    assert login.status_code == 200
+
+
 def test_invalid_token_is_rejected(client):
     response = client.get(
         "/api/jobs/",
