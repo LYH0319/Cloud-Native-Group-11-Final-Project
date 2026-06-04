@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { JobMonitor } from './JobMonitor';
 import { homeLoginLogoutStyles, operatorStyles } from './Style';
+import { showNotification } from '../components/NotificationCenter';
 
 export const Operator = () => {
   const navigate = useNavigate();
@@ -13,8 +14,8 @@ export const Operator = () => {
           <button
             className="btn btn-light btn-sm px-3 mb-2"
             onClick={() => {
-              alert('已登出');
               localStorage.removeItem('user');
+              showNotification('已登出', 'success');
               navigate('/');
             }}
             style={homeLoginLogoutStyles.style}
