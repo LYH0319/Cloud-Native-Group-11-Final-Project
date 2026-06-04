@@ -21,6 +21,8 @@ from src.utils.security import (
 from src.utils.email import send_password_reset_email
 
 ERROR_USER_NOT_FOUND = "Can not find ID"
+ERROR_ACCOUNT_NOT_FOUND = "User not found"
+
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -233,7 +235,7 @@ def reset_password_with_token(
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=ERROR_ACCOUNT_NOT_FOUND,
         )
 
     user.hashed_password = hash_password(request.new_password)
@@ -257,7 +259,7 @@ def admin_reset_user_password(
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=ERROR_ACCOUNT_NOT_FOUND,
         )
 
     user.hashed_password = hash_password(request.new_password)
@@ -299,7 +301,7 @@ def delete_user(
     if user is None or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=ERROR_ACCOUNT_NOT_FOUND,
         )
     if user.user_id == current_user.user_id:
         raise HTTPException(
