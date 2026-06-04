@@ -5,9 +5,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 from typing import Generator
 
-os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 from src.database.connection import Base
+
+os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 
 @pytest.fixture()

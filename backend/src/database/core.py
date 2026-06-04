@@ -101,7 +101,9 @@ def ensure_schema_compatibility(bind_engine=None) -> None:
             column["name"] for column in inspector.get_columns("executions")
         }
         if "last_heartbeat" not in execution_columns:
-            statements.append("ALTER TABLE executions ADD COLUMN last_heartbeat DATETIME NULL")
+            statements.append(
+                "ALTER TABLE executions ADD COLUMN last_heartbeat DATETIME NULL"
+            )
 
     if not statements:
         return

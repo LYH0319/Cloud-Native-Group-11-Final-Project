@@ -4,6 +4,7 @@ from datetime import datetime
 from src.database.models import UserRole, HttpMethod, ScheduleType, JobStatus
 from src.database.models import TriggerType, ExecutionStatus
 
+
 # ==========================================
 # 1. User Schemas
 # ==========================================
@@ -77,12 +78,15 @@ class UserResponse(UserBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class CheckIdRequest(BaseModel):
     employee_id: str
+
 
 class PasswordRequest(BaseModel):
     employee_id: str
     password: str
+
 
 class ResetPasswordRequest(BaseModel):
     employee_id: str
@@ -188,7 +192,7 @@ class JobCreate(JobBase):
     headers: Optional[dict] = None
     body: Optional[dict] = None
     cron_expression: Optional[str] = None
-    depends_on: Optional[list[int]] = None # 💡 請他加上這一行！
+    depends_on: Optional[list[int]] = None  # 💡 請他加上這一行！
 
 
 class JobResponse(JobBase):

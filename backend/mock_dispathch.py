@@ -1,7 +1,6 @@
 # backend/mock_dispatch.py
 import redis
 import json
-import time
 
 
 def trigger_mock_job():

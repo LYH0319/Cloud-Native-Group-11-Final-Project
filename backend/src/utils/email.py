@@ -7,7 +7,9 @@ from email.message import EmailMessage
 def send_password_reset_email(to_email: str, reset_link: str) -> None:
     """Send a password reset email, falling back to console output in local dev."""
     host = os.getenv("SMTP_HOST")
-    sender = os.getenv("SMTP_FROM") or os.getenv("SMTP_USERNAME") or "noreply@example.com"
+    sender = (
+        os.getenv("SMTP_FROM") or os.getenv("SMTP_USERNAME") or "noreply@example.com"
+    )
     sender_name = os.getenv("SMTP_FROM_NAME")
     subject = "Job Scheduler password reset"
     body = (
@@ -24,7 +26,9 @@ def send_password_reset_email(to_email: str, reset_link: str) -> None:
     message = EmailMessage()
     if sender_name and "@" in sender:
         local_part, domain = sender.rsplit("@", 1)
-        message["From"] = Address(display_name=sender_name, username=local_part, domain=domain)
+        message["From"] = Address(
+            display_name=sender_name, username=local_part, domain=domain
+        )
     else:
         message["From"] = sender
     message["To"] = to_email

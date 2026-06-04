@@ -35,7 +35,7 @@ def send_test_tasks():
     # 我們複製一個一模一樣 execution_id 的任務緊跟在後推入
     duplicate_task = http_task.copy()
     r.rpush(queue_name, json.dumps(duplicate_task))
-    print(f"🛡️ [已派發任務 2] 故意推入相同 Execution ID 的重複請求進行防重測試...")
+    print("🛡️ [已派發任務 2] 故意推入相同 Execution ID 的重複請求進行防重測試...")
 
 
 if __name__ == "__main__":

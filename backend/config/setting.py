@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     REDIS_HOST: str = Field(default="localhost")
     REDIS_PORT: int = Field(default=6379)
     REDIS_DB: int = Field(default=0)
-    
+
     # 隊列與心跳設定
     JOB_QUEUE_NAME: str = "job_priority_queue"  # 第二期升級為 Priority 概念或基本 Queue
     HEARTBEAT_INTERVAL: int = 30  # Worker 每 30 秒回報一次心跳
@@ -19,14 +19,14 @@ class Settings(BaseSettings):
     DEFAULT_TASK_TIMEOUT: int = 300
     MAX_EXECUTION_RETRIES: int = 1
 
-    #class Config:
+    # class Config:
     #    env_file = ".env"
     #    extra = "ignore"
 
     model_config = SettingsConfigDict(
-        env_file=".env.local",      # 優先讀取 .env.local 檔案（給本地 pytest 測試連 MySQL）
+        env_file=".env.local",  # 優先讀取 .env.local 檔案（給本地 pytest 測試連 MySQL）
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
 
 

@@ -7,7 +7,6 @@ from croniter.croniter import CroniterBadCronError
 from src.database.models import (
     User,
     UserRole,
-    JobStatus,
     ScheduleType,
     Job,
     Execution,
@@ -15,7 +14,7 @@ from src.database.models import (
     TriggerType,
     JobDependency,
     LogReference,
-    JobStatus
+    JobStatus,
 )
 from datetime import datetime, timezone, timedelta
 from src.database import schemas
@@ -99,6 +98,7 @@ def get_job_timeout_seconds(job: Job, default_timeout: int = 300) -> int:
         return max(1, int(timeout))
     except (TypeError, ValueError):
         return default_timeout
+
 
 # ==========================================
 #                  USER CRUD
@@ -573,9 +573,7 @@ def elapsed_seconds(start_time: datetime, end_time: datetime) -> int:
         else start_time
     )
     end_time_utc = (
-        end_time.replace(tzinfo=timezone.utc)
-        if end_time.tzinfo is None
-        else end_time
+        end_time.replace(tzinfo=timezone.utc) if end_time.tzinfo is None else end_time
     )
     seconds = (end_time_utc - start_time_utc).total_seconds()
     if seconds < 0:
@@ -867,7 +865,9 @@ def report_execution_result(  # noqa: C901
     if report.duration is not None:
         exec_record.duration = max(1, math.ceil(report.duration))
     elif exec_record.start_time and exec_record.end_time:
-        exec_record.duration = elapsed_seconds(exec_record.start_time, exec_record.end_time)
+        exec_record.duration = elapsed_seconds(
+            exec_record.start_time, exec_record.end_time
+        )
 
     log_reference = None
     if report.log_path is not None:
@@ -967,7 +967,10 @@ def get_unsatisfied_dependency_ids(db: Session, job_id: int) -> list[int]:
             .order_by(Execution.created_at.desc())
             .limit(1)
         )
-        if latest_execution is None or latest_execution.status != ExecutionStatus.SUCCESS:
+        if (
+            latest_execution is None
+            or latest_execution.status != ExecutionStatus.SUCCESS
+        ):
             unsatisfied.append(dep.upstream_id)
     return unsatisfied
 
@@ -1078,7 +1081,10 @@ def get_active_dependency_graph(db: Session) -> dict[int, list[int]]:
         graph[dep.downstream_id].append(dep.upstream_id)
     return graph
 
-def create_job_dependencies(db: Session, downstream_id: int, upstream_ids: list[int]) -> None:
+
+def create_job_dependencies(
+    db: Session, downstream_id: int, upstream_ids: list[int]
+) -> None:
     """將多筆前置關聯批次安全寫入 job_dependencies 表"""
     for upstream_id in upstream_ids:
         dep_record = JobDependency(upstream_id=upstream_id, downstream_id=downstream_id)

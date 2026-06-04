@@ -1,6 +1,12 @@
 from fastapi import APIRouter, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from prometheus_client import Counter, Gauge, Histogram, CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import (
+    Counter,
+    Gauge,
+    Histogram,
+    CONTENT_TYPE_LATEST,
+    generate_latest,
+)
 
 router = APIRouter()
 

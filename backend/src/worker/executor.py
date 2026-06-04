@@ -6,7 +6,6 @@ import os
 import socket
 import threading  # 引入線程庫，處理長任務的非同步心跳 (NFR: 長時間任務處理)
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import scoped_session, sessionmaker
 
 # 1. 引入系統設定
 from config.setting import settings
@@ -34,8 +33,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("WorkerExecutor")
 
-db_session_factory = sessionmaker(bind=engine)
-db_session = scoped_session(db_session_factory)
+# db_session_factory = sessionmaker(bind=engine)
+# db_session = scoped_session(db_session_factory)
 
 
 def get_worker_id() -> str:
@@ -186,7 +185,7 @@ def report_to_database(
     )
 
     # 建立資料庫連線 Session
-    db = db_session()
+    db = SessionLocal()
     try:
         worker_id = get_worker_id()
         if log_path is not None:
@@ -212,9 +211,9 @@ def report_to_database(
                 worker_id=worker_id,
                 error_message=error_message,
             )
-        
+
         db.commit()
-        
+
         if updated_record and updated_record.duration is not None:
             logger.info(
                 f"[DB Sync 成功] Exec ID {execution_id} 處理結束，系統自動計算耗時: {updated_record.duration} 秒"
@@ -222,10 +221,10 @@ def report_to_database(
 
     except Exception as e:
         # NFR: 可靠性 (Reliability) - 捕捉資料庫異常，避免 Worker 核心迴圈因為 DB 波動而集體死機
-        #db.rollback()
+        # db.rollback()
         logger.error(f"[DB Sync 異常] 寫入 MySQL 失敗: {str(e)}")
     finally:
-        db_session.remove()  # 務必關閉 Session，釋放連線池資源
+        db.close()  # 務必關閉 Session，釋放連線池資源
 
 
 # ==========================================
