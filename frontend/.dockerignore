@@ -1,0 +1,20 @@
+# 1. Node.js 依賴套件 (最重要，避免覆蓋容器內的安裝)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# 2. 前端建置產物 (如果有的話)
+dist/
+build/
+.next/
+
+# 3. 測試與覆蓋率報告
+coverage/
+
+# 4. 環境變數與機密資訊
+.env
+.env.local
+
+# 5. 版本控制
+.git/
+.gitignore

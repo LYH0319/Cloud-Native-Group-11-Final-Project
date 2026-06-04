@@ -68,8 +68,11 @@ export const CronSchedulePicker = ({
 
   return (
     <div className={`cron-picker ${disabled ? 'is-disabled' : ''}`}>
-      <label className="form-label">Repeat interval</label>
+      <label htmlFor="repeat-interval-select" className="form-label">
+        Repeat interval
+      </label>
       <select
+        id="repeat-interval-select"
         className="form-select mb-2"
         disabled={disabled}
         value={mode}

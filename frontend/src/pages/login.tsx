@@ -26,7 +26,7 @@ export const Login = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get('reset_token');
+    const token = new URLSearchParams(globalThis.location.search).get('reset_token');
     if (token) {
       setResetToken(token);
       setStep('resetPassword');
@@ -217,7 +217,7 @@ export const Login = () => {
       setPassword('');
       setStep('resetSuccess');
       setCounter(0);
-      window.history.replaceState({}, document.title, window.location.pathname);
+      globalThis.history.replaceState({}, document.title, globalThis.location.pathname);
     } catch (error) {
       setErrMessage('重設密碼失敗！請確認連結是否過期，或重新申請一次');
       setPassword('');
@@ -490,7 +490,11 @@ export const Login = () => {
                         setPassword('');
                         setErrMessage('');
                         setResetToken('');
-                        window.history.replaceState({}, document.title, window.location.pathname);
+                        globalThis.history.replaceState(
+                          {},
+                          document.title,
+                          globalThis.location.pathname
+                        );
                         setStep(id ? 'loginPassword' : 'checkId');
                         setCounter(0);
                       }}

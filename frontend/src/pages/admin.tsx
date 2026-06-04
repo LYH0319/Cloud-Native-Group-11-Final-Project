@@ -86,7 +86,7 @@ export const Admin = () => {
       showNotification('不能刪除目前登入的帳號', 'error');
       return;
     }
-    if (!window.confirm(`確定要刪除 ${user.employee_id} 嗎？`)) {
+    if (!globalThis.confirm(`確定要刪除 ${user.employee_id} 嗎？`)) {
       return;
     }
 

@@ -1,10 +1,26 @@
-.pytest_cache/
-__pycache__/
-*.py[cod]
-*$py.class
+# 1. 虛擬環境 (Virtual Environments)
 .venv/
 venv/
 env/
-*.sqlite3
-htmlcov/
+
+# 2. Python 編譯快取 (Byte-compiled / Cache)
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# 3. 測試與覆蓋率報告 (Testing & Coverage)
 .coverage
+coverage.xml
+htmlcov/
+
+# 4. 環境變數與機密資訊 (Environment & Secrets)
+.env
+
+# 5. 系統日誌與資料庫 (Logs & Databases)
+*.log
+*.sqlite3
+
+# 6. 版本控制 (Version Control)
+.git/
+.gitignore

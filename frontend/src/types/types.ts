@@ -13,7 +13,7 @@ export interface BackendUser {
   user_id: number;
   employee_id: string;
   username: string;
-  role: 'Admin' | 'Developer' | 'Operator' | string;
+  role: 'Admin' | 'Developer' | 'Operator';
   email?: string | null;
   is_active?: boolean;
   created_at?: string;
@@ -55,7 +55,7 @@ export interface BackendJob {
   cron_expression?: string | null;
   depends_on?: number[];
   timeout_seconds?: number | null;
-  status: 'Active' | 'Disabled' | 'Deleted' | string;
+  status: 'Active' | 'Disabled' | 'Deleted';
   next_run_time?: string | null;
   created_at: string;
   updated_at: string;
@@ -64,8 +64,8 @@ export interface BackendJob {
 export interface ExecutionRecord {
   execution_id: number;
   job_id: number;
-  trigger_type: 'Scheduler' | 'Manual' | string;
-  status: 'Pending' | 'Running' | 'Success' | 'Failed' | 'Timeout' | 'Cancelled' | string;
+  trigger_type: 'Scheduler' | 'Manual';
+  status: 'Pending' | 'Running' | 'Success' | 'Failed' | 'Timeout' | 'Cancelled';
   start_time?: string | null;
   end_time?: string | null;
   last_heartbeat?: string | null;

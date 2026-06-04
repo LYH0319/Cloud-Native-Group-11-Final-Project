@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import './NotificationCenter.css';
 
 export type NotificationTone = 'success' | 'info' | 'error';
@@ -12,7 +12,8 @@ interface AppNotification {
 const notificationEventName = 'app-notification';
 
 export const showNotification = (message: string, tone: NotificationTone = 'info') => {
-  window.dispatchEvent(
+  // 保持 globalThis 修正
+  globalThis.dispatchEvent(
     new CustomEvent(notificationEventName, {
       detail: { message, tone }
     })
@@ -21,6 +22,11 @@ export const showNotification = (message: string, tone: NotificationTone = 'info
 
 export const NotificationCenter = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  // 抽出過濾陣列的邏輯，最深層級只到第 4 層
+  const removeNotification = useCallback((idToRemove: number) => {
+    setNotifications((current) => current.filter((item) => item.id !== idToRemove));
+  }, []);
 
   useEffect(() => {
     const handleNotification = (event: Event) => {
@@ -33,14 +39,16 @@ export const NotificationCenter = () => {
         { id, message: detail.message || '', tone: detail.tone || 'info' }
       ]);
 
-      window.setTimeout(() => {
-        setNotifications((current) => current.filter((item) => item.id !== id));
+      // 保持 globalThis 修正，並呼叫獨立函式
+      globalThis.setTimeout(() => {
+        removeNotification(id);
       }, 3600);
     };
 
-    window.addEventListener(notificationEventName, handleNotification);
-    return () => window.removeEventListener(notificationEventName, handleNotification);
-  }, []);
+    // 保持 globalThis 修正
+    globalThis.addEventListener(notificationEventName, handleNotification);
+    return () => globalThis.removeEventListener(notificationEventName, handleNotification);
+  }, [removeNotification]); // 將 removeNotification 加入 dependencies
 
   if (notifications.length === 0) return null;
 
@@ -57,9 +65,8 @@ export const NotificationCenter = () => {
             type="button"
             className="notification-close"
             aria-label="Close notification"
-            onClick={() =>
-              setNotifications((current) => current.filter((item) => item.id !== notification.id))
-            }
+            // 共用精簡的函式
+            onClick={() => removeNotification(notification.id)}
           >
             x
           </button>

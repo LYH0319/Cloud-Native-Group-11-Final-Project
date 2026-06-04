@@ -29,7 +29,7 @@ services:
       redis:
         condition: service_started
 
-  backend-worker:
+  worker:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
@@ -50,7 +50,7 @@ services:
         condition: service_started
     restart: always
 
-  backend-scheduler:
+  scheduler:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
