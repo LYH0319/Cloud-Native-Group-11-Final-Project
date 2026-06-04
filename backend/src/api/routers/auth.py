@@ -16,6 +16,8 @@ from src.utils.security import (
     hash_password,
 )
 
+ERROR_USER_NOT_FOUND = "Can not find ID"
+
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
@@ -112,7 +114,7 @@ def check_id(request: schemas.CheckIdRequest, db: Annotated[Session, Depends(get
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Can not find ID",
+            detail=ERROR_USER_NOT_FOUND,
         )
     return {"isRegistered": bool(user.hashed_password)}
 
@@ -127,7 +129,7 @@ def register_password(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Can not find ID",
+            detail=ERROR_USER_NOT_FOUND,
         )
     if user.hashed_password:
         raise HTTPException(
@@ -170,7 +172,7 @@ def reset_password(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Can not find ID",
+            detail=ERROR_USER_NOT_FOUND,
         )
 
     user.hashed_password = hash_password(request.new_password)
