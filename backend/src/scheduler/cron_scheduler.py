@@ -51,6 +51,7 @@ def recover_stale_executions(
                 (Execution.last_heartbeat.is_(None))
                 | (Execution.last_heartbeat < cutoff)
             )
+            .with_for_update(skip_locked=True)
         ).all()
     )
 
@@ -143,7 +144,7 @@ def start_cron_scheduler(db_session_factory: sessionmaker = SessionLocal):
 
             # 呼叫 get_active_jobs 撈出時間到的 ACTIVE 任務 (one-time & cron)
             due_jobs = get_active_jobs(
-                db=db, schedule_type=None, target_time=now_utc, for_update=False
+                db=db, schedule_type=None, target_time=now_utc, for_update=True
             )
 
             for job in due_jobs:

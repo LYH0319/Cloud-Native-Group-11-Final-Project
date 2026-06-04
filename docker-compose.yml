@@ -54,7 +54,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.worker
-    container_name: group11-scheduler
     command: ["python", "src/scheduler/cron_scheduler.py"]
     volumes:
       - ./backend:/app
