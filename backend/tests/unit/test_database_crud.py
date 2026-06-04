@@ -209,6 +209,8 @@ def test_create_job_success(db_session):
     # Assert (Verify job attributes, owner_id, default status is ACTIVE, and db-generated fields)
     assert result.owner_id == created_user.user_id
     assert result.status == JobStatus.ACTIVE
+    assert result.created_at.tzinfo is None
+    assert result.updated_at.tzinfo is None
 
 
 # ==========================================
@@ -281,6 +283,7 @@ def test_get_active_jobs_returns_ready_jobs(db_session):
     # Assert
     assert len(results) == 1
     assert results[0].job_name == "Ready Job"
+    assert results[0].next_run_time.tzinfo is None
 
 
 def test_get_active_jobs_filters_by_schedule_type(db_session):
@@ -515,6 +518,34 @@ def test_create_execution_success(db_session):
     assert result.trigger_type == TriggerType.SCHEDULER
     assert result.status == ExecutionStatus.PENDING  # Default should be PENDING
     assert result.retry_count == 0
+    assert result.created_at.tzinfo is None
+
+
+def test_create_execution_accepts_retry_count(db_session):
+    """Test creating a rerun execution can carry retry metadata."""
+    user = schemas.UserCreate(
+        employee_id="0018_retry", username="RetryRunner", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    created_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Retry Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+
+    result = crud.create_execution(
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
+        retry_count=3,
+    )
+
+    assert result.retry_count == 3
 
 
 def test_get_executions_by_job_id(db_session):
@@ -784,6 +815,8 @@ def test_update_execution_lifecycle(db_session):
     # Assert 1: Check start_time and worker_id
     assert running_exec.status == ExecutionStatus.RUNNING
     assert running_exec.start_time is not None
+    assert running_exec.start_time.tzinfo is None
+    assert running_exec.last_heartbeat.tzinfo is None
     assert running_exec.worker_id == "node-alpha"
     assert running_exec.end_time is None  # Shouldn't have ended yet
 
@@ -801,6 +834,7 @@ def test_update_execution_lifecycle(db_session):
     # Assert 2: Check end_time and duration calculation
     assert success_exec.status == ExecutionStatus.SUCCESS
     assert success_exec.end_time is not None
+    assert success_exec.end_time.tzinfo is None
     assert success_exec.duration is not None
     assert success_exec.duration >= 1
 
@@ -856,6 +890,85 @@ def test_report_execution_result_with_log_reference(db_session):
     assert log_reference.execution_id == exec_record.execution_id
     assert log_reference.log_path == "logs/executions/report-task.log"
     assert log_reference.log_size == 2048
+
+
+def test_report_execution_result_rounds_short_duration_up(db_session):
+    """Test worker result reporting does not store sub-second executions as 0 seconds."""
+    user = schemas.UserCreate(
+        employee_id="0021_duration", username="DurationUser", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    created_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Duration Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    exec_record = crud.create_execution(
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
+    )
+
+    result = crud.report_execution_result(
+        db=db_session,
+        execution_id=exec_record.execution_id,
+        report=schemas.ExecutionWorkerUpdate(
+            status=ExecutionStatus.SUCCESS,
+            worker_id="node-duration",
+            duration=0.2,
+        ),
+    )
+
+    assert result is not None
+    updated_exec, _ = result
+    assert updated_exec.duration == 1
+
+
+def test_report_execution_result_normalizes_aware_timestamps(db_session):
+    """Test worker-provided aware timestamps are stored as naive UTC."""
+    user = schemas.UserCreate(
+        employee_id="0021_timezone", username="TimezoneUser", role=UserRole.DEVELOPER
+    )
+    created_user = crud.create_user(db=db_session, user_in=user)
+    created_job = crud.create_job(
+        db=db_session,
+        owner_id=created_user.user_id,
+        job_in=schemas.JobCreate(
+            job_name="Timezone Task",
+            method=HttpMethod.GET,
+            endpoint="http://test.com",
+            schedule_type=ScheduleType.ONE_TIME,
+        ),
+    )
+    exec_record = crud.create_execution(
+        db=db_session,
+        job_id=created_job.job_id,
+        trigger_type=TriggerType.MANUAL,
+    )
+    start_time = datetime(2026, 1, 1, 8, 0, tzinfo=timezone.utc)
+    end_time = datetime(2026, 1, 1, 8, 0, 1, tzinfo=timezone.utc)
+
+    result = crud.report_execution_result(
+        db=db_session,
+        execution_id=exec_record.execution_id,
+        report=schemas.ExecutionWorkerUpdate(
+            status=ExecutionStatus.SUCCESS,
+            worker_id="node-timezone",
+            start_time=start_time,
+            end_time=end_time,
+        ),
+    )
+
+    assert result is not None
+    updated_exec, _ = result
+    assert updated_exec.start_time == start_time.replace(tzinfo=None)
+    assert updated_exec.end_time == end_time.replace(tzinfo=None)
+    assert updated_exec.duration == 1
 
 
 def test_report_execution_result_rejects_mismatched_job_id(db_session):

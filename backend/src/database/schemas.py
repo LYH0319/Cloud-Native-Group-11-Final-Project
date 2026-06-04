@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, Dict, Any
 from datetime import datetime
 from src.database.models import UserRole, HttpMethod, ScheduleType, JobStatus
@@ -7,8 +7,6 @@ from src.database.models import TriggerType, ExecutionStatus
 # ==========================================
 # 1. User Schemas
 # ==========================================
-
-
 class UserBase(BaseModel):
     """
     Base schema containing common attributes for a User.
@@ -33,6 +31,21 @@ class UserBase(BaseModel):
     )
     role: UserRole = Field(default=UserRole.DEVELOPER, description="Authorization role")
     email: Optional[str] = Field(default=None, max_length=255)
+
+    @field_validator("employee_id", "username", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
 
 
 class UserCreate(UserBase):
@@ -64,6 +77,42 @@ class UserResponse(UserBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class CheckIdRequest(BaseModel):
+    employee_id: str
+
+class PasswordRequest(BaseModel):
+    employee_id: str
+    password: str
+
+class ResetPasswordRequest(BaseModel):
+    employee_id: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    employee_id: str = Field(..., min_length=1, max_length=20)
+
+    @field_validator("employee_id", mode="before")
+    @classmethod
+    def normalize_employee_id(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ForgotPasswordResponse(BaseModel):
+    status: str
+    message: str
+
+
+class TokenResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=6, max_length=128)
+
 
 class UserRead(UserResponse):
     """Public user response. Never includes hashed_password."""
@@ -77,12 +126,20 @@ class UserLogin(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
 
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 class TokenResponse(BaseModel):
     """JWT token response."""
 
     access_token: str
     token_type: str = "bearer"
+    expires_in: int
     user: UserRead
 
 
@@ -151,7 +208,9 @@ class JobResponse(JobBase):
     job_id: int
     owner_id: int
     status: JobStatus
-    next_run_time: Optional[datetime]
+    next_run_time: Optional[datetime] = None
+    depends_on: list[int] = Field(default_factory=list)
+    timeout_seconds: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -183,6 +242,12 @@ class JobUpdate(BaseModel):
     headers: Optional[Dict[str, Any]] = None
     body: Optional[Dict[str, Any]] = None
     cron_expression: Optional[str] = Field(default=None, max_length=100)
+
+
+class JobStatusUpdate(BaseModel):
+    """Schema for operator/admin job status changes."""
+
+    status: JobStatus
 
 
 # ==========================================
@@ -231,12 +296,13 @@ class ExecutionResponse(BaseModel):
     job_id: int
     trigger_type: TriggerType
     status: ExecutionStatus
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
-    duration: Optional[int]
-    worker_id: Optional[str]
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    last_heartbeat: Optional[datetime] = None
+    duration: Optional[int] = None
+    worker_id: Optional[str] = None
     retry_count: int
-    error_message: Optional[str]
+    error_message: Optional[str] = None
     created_at: datetime
     log_reference: Optional[LogReferenceResponse] = None
 
@@ -295,7 +361,7 @@ class ExecutionWorkerUpdate(BaseModel):
     worker_id: str = Field(..., max_length=50)
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    duration: Optional[int] = Field(default=None, ge=0)
+    duration: Optional[float] = Field(default=None, ge=0)
     retry_count: Optional[int] = Field(default=None, ge=0)
     error_message: Optional[str] = Field(default=None, max_length=4000)
 

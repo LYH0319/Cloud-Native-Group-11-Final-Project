@@ -1,0 +1,76 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Login } from './pages/login';
+import { Admin } from './pages/admin';
+import { DeveloperHome } from './pages/developerHome';
+import { DeveloperAddRESTfulAPI } from './pages/developerAddRESTfulAPI';
+import { DeveloperAddShellScript } from './pages/developerAddShellScript';
+import { DeveloperJobs } from './pages/developerJobs';
+import { Operator } from './pages/operator';
+import { TestCreateUser } from './pages/testCreateUser';
+import { RouteGuard } from './components/routeGuard';
+import { NotificationCenter } from './components/NotificationCenter';
+
+const App = () => {
+  return (
+    <BrowserRouter>
+      <NotificationCenter />
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/test/create-user" element={<TestCreateUser />} />
+
+        <Route
+          path="/admin"
+          element={
+            <RouteGuard allowedRole="admin">
+              <Admin />
+            </RouteGuard>
+          }
+        />
+
+        <Route
+          path="/developer"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperHome />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/RESTfulAPI"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperAddRESTfulAPI />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/ShellScript"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperAddShellScript />
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/developer/jobs"
+          element={
+            <RouteGuard allowedRole="developer">
+              <DeveloperJobs />
+            </RouteGuard>
+          }
+        />
+
+        <Route
+          path="/operator"
+          element={
+            <RouteGuard allowedRole="operator">
+              <Operator />
+            </RouteGuard>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+};
+
+export default App;

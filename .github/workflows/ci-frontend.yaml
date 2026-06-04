@@ -36,7 +36,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./frontend
-        run: npm ci
+        run: npm ci --include=dev
 
       # add your steps here, e.g. lint, test, build etc.
 
@@ -52,7 +52,7 @@ jobs:
       
       - name: Frontend Test report
         uses: dorny/test-reporter@v3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.ACT != 'true' }}
         with:
           name: Vitest Results
           path: frontend/reports/vitest-**.xml

@@ -2,6 +2,8 @@ import redis
 import json
 import time
 import logging
+import os
+import socket
 import threading  # 引入線程庫，處理長任務的非同步心跳 (NFR: 長時間任務處理)
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -16,9 +18,13 @@ from src.worker.tasks.shell_task import run_shell_task
 
 # 3. 引入 沅籈 寫好的資料庫更新函式與狀態定義
 from src.database import schemas
-from src.database.crud import report_execution_result, update_execution_status
+from src.database.crud import (
+    refresh_execution_heartbeat,
+    report_execution_result,
+    update_execution_status,
+)
 from src.database.models import ExecutionStatus
-from src.database.core import SessionLocal, engine
+from src.database.core import SessionLocal, engine, ensure_schema_compatibility
 from src.database.models import Base
 from src.utils.logger import write_execution_log
 
@@ -30,6 +36,10 @@ logger = logging.getLogger("WorkerExecutor")
 
 db_session_factory = sessionmaker(bind=engine)
 db_session = scoped_session(db_session_factory)
+
+
+def get_worker_id() -> str:
+    return os.getenv("WORKER_ID") or socket.gethostname() or "group11-worker"
 
 
 # ==================================================================
@@ -44,7 +54,7 @@ redis_pool = redis.ConnectionPool(
 )
 
 
-def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
+def dispatch_task(execution_id: int, job_dict: dict, task_type: str | None = None):
     """
     【分布式派發窗口】
     不再使用本機 Thread，而是將任務序列化為 JSON，直接推入分散式快取 Redis Queue
@@ -52,11 +62,13 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str = "http"):
     # 1. 重用Redis連線池
     r_client = redis.Redis(connection_pool=redis_pool)
 
+    resolved_task_type = task_type or job_dict.get("task_type") or "http"
+
     # 2. 封裝成 TaskPayload 格式，根據 json.loads(message_body) 需求
     task_payload = {
         "execution_id": execution_id,
         "job_id": job_dict["job_id"],
-        "task_type": task_type,  # "http" 或 "shell"
+        "task_type": resolved_task_type,  # "http" 或 "shell"
         "payload": job_dict,  # 實際要執行的 method, endpoint 等
         "timeout_threshold": job_dict.get("timeout", 300),
     }
@@ -127,6 +139,15 @@ class HeartbeatThread(threading.Thread):
                     state.model_dump_json(),
                     ex=settings.HEARTBEAT_TIMEOUT,
                 )
+                db: Session = SessionLocal()
+                try:
+                    refresh_execution_heartbeat(
+                        db=db,
+                        execution_id=self.task.execution_id,
+                        worker_id=get_worker_id(),
+                    )
+                finally:
+                    db.close()
                 logger.debug(
                     f"[Heartbeat] 已向 Cache 刷新生存訊號: {self.heartbeat_key}"
                 )
@@ -151,6 +172,8 @@ def report_to_database(
     error_message: str | None = None,
     log_path: str | None = None,
     log_size: int | None = None,
+    duration: float | int | None = None,
+    retry_count: int | None = None,
 ):
     """
     呼叫 沅籈 寫好的 update_execution_status 函式。
@@ -165,7 +188,7 @@ def report_to_database(
     # 建立資料庫連線 Session
     db = db_session()
     try:
-        worker_id = "group11_worker_container_node"
+        worker_id = get_worker_id()
         if log_path is not None:
             result = report_execution_result(
                 db=db,
@@ -176,6 +199,8 @@ def report_to_database(
                     error_message=error_message,
                     log_path=log_path,
                     log_size=log_size,
+                    duration=duration,
+                    retry_count=retry_count,
                 ),
             )
             updated_record = result[0] if result is not None else None
@@ -235,6 +260,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
     error_msg = None
     log_path = None
     log_size = None
+    duration = None
+    retry_count = None
 
     try:
         # 3. 根據 task_type 進行分流執行
@@ -253,6 +280,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
         }
         final_status = status_map.get(result["status"], ExecutionStatus.FAILED)
         error_msg = result.get("error_message")
+        duration = result.get("duration")
+        retry_count = result.get("retry_count")
         if "log" in result and result["log"] is not None:
             log_path, log_size = write_execution_log(task.execution_id, result["log"])
 
@@ -276,6 +305,8 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             error_message=error_msg,
             log_path=log_path,
             log_size=log_size,
+            duration=duration,
+            retry_count=retry_count,
         )
         logger.info(f"任務處理完成，已釋放資源 - Execution ID: {task.execution_id}")
 
@@ -287,6 +318,7 @@ def worker_loop():
     try:
         logger.info("[DB Init] 正在檢查定自動建立MySQL所有資料表...")
         Base.metadata.create_all(bind=engine)
+        ensure_schema_compatibility(engine)
         logger.info("[DB Init 成功] MySQL 資料表確認建立完成!")
     except Exception as e:
         logger.warning(f"[DB Init 警告] 自動建表失敗，請確認連線或設定: {str(e)}")

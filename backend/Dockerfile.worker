@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 複製所有後端原始碼
 COPY . .
 
+RUN useradd -m appuser \
+&& chown -R appuser:appuser /app
+
+USER appuser
+
 # 設定環境變數，確保模組引入路徑正確
 ENV PYTHONPATH=/app
 

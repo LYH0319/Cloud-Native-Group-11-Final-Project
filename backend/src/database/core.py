@@ -35,31 +35,40 @@ def get_db():
 def init_db():
     Base.metadata.create_all(engine)
     ensure_schema_compatibility(engine)
+    ensure_default_admin()
     print("Initialized database tables!")
 
-    from sqlalchemy import select
-    from models import User, UserRole
 
-    # 拿取連線
+def ensure_default_admin() -> None:
+    """Ensure the built-in admin/admin account exists after DB startup."""
+    from src.database.models import User, UserRole
+    from src.utils.security import hash_password
+
     db = SessionLocal()
     try:
-        # 檢查資料庫裡是不是已經有 ADMIN 存在了
-        admin_exists = db.scalar(select(User).where(User.role == UserRole.ADMIN))
-
-        if not admin_exists:
-            print("No Admin found. Creating default Admin user...")
-
-            # 建立預設的超級管理員 (你可以跟組員討論預設的員編要叫什麼)
+        admin = db.scalar(
+            text("SELECT user_id FROM users WHERE employee_id = :employee_id"),
+            {"employee_id": "admin"},
+        )
+        hashed_password = hash_password("admin")
+        if admin is None:
             default_admin = User(
-                employee_id="admin_000", username="System Admin", role=UserRole.ADMIN
+                employee_id="admin",
+                username="Admin",
+                role=UserRole.ADMIN,
+                hashed_password=hashed_password,
             )
-
             db.add(default_admin)
-            db.commit()
-            print("✅ Default Admin user created successfully!")
-
-    except Exception as e:
-        print(f"❌ Error creating default admin: {e}")
+        else:
+            user = db.get(User, admin)
+            if user is not None:
+                user.username = "Admin"
+                user.role = UserRole.ADMIN
+                user.hashed_password = hashed_password
+                user.is_active = True
+        db.commit()
+    except Exception as error:
+        print(f"Error creating default admin: {error}")
         db.rollback()
     finally:
         db.close()
@@ -78,9 +87,7 @@ def ensure_schema_compatibility(bind_engine=None) -> None:
     if not inspector.has_table("users"):
         return
 
-    existing_columns = {
-        column["name"] for column in inspector.get_columns("users")
-    }
+    existing_columns = {column["name"] for column in inspector.get_columns("users")}
     statements = []
     if "email" not in existing_columns:
         statements.append("ALTER TABLE users ADD COLUMN email VARCHAR(255) NULL")
@@ -88,6 +95,13 @@ def ensure_schema_compatibility(bind_engine=None) -> None:
         statements.append(
             "ALTER TABLE users ADD COLUMN hashed_password VARCHAR(255) NULL"
         )
+
+    if inspector.has_table("executions"):
+        execution_columns = {
+            column["name"] for column in inspector.get_columns("executions")
+        }
+        if "last_heartbeat" not in execution_columns:
+            statements.append("ALTER TABLE executions ADD COLUMN last_heartbeat DATETIME NULL")
 
     if not statements:
         return

@@ -7,11 +7,14 @@ from sqlalchemy.exc import OperationalError
 from src.api.routers import auth, history, jobs
 from src.api import metrics
 from src.database.connection import Base, engine
-from src.database.core import ensure_schema_compatibility
+from src.database.core import ensure_default_admin, ensure_schema_compatibility
 
 app = FastAPI(
     title="Group 11 Job Scheduler API",
-    description="Current API surface for manual triggers, execution history, and worker result reporting.",
+    description=(
+        "Current API surface for manual triggers, execution history, "
+        "and worker result reporting."
+    ),
 )
 
 app.add_middleware(
@@ -39,6 +42,7 @@ def startup() -> None:
         try:
             Base.metadata.create_all(bind=engine)
             ensure_schema_compatibility(engine)
+            ensure_default_admin()
             return
         except OperationalError as error:
             last_error = error
@@ -51,6 +55,11 @@ def startup() -> None:
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/")
+def root():
+    return {"message": "Job Scheduler System API is running"}
 
 
 app.include_router(auth.router, prefix="/api")
