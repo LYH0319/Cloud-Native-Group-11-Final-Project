@@ -99,9 +99,11 @@ export const DeveloperAddRESTfulAPI = () => {
 
       <div className="container mt-4" style={{ maxWidth: '760px' }}>
         <h4>新增 RESTful API 任務</h4>
-        
+
         {/* 修正 1: 加上 htmlFor 與 id */}
-        <label htmlFor="job-name" className="form-label">Job name</label>
+        <label htmlFor="job-name" className="form-label">
+          Job name
+        </label>
         <input
           id="job-name"
           type="text"
@@ -110,11 +112,13 @@ export const DeveloperAddRESTfulAPI = () => {
           value={jobName}
           onChange={(e) => setJobName(e.target.value)}
         />
-        
+
         <div className="row">
           <div className="col-md-4">
             {/* 修正 2: 加上 htmlFor 與 id */}
-            <label htmlFor="http-method" className="form-label">HTTP method</label>
+            <label htmlFor="http-method" className="form-label">
+              HTTP method
+            </label>
             <select
               id="http-method"
               className="form-select mb-2"
@@ -130,7 +134,9 @@ export const DeveloperAddRESTfulAPI = () => {
           </div>
           <div className="col-md-8">
             {/* 修正 3: 加上 htmlFor 與 id */}
-            <label htmlFor="endpoint-url" className="form-label">Endpoint URL</label>
+            <label htmlFor="endpoint-url" className="form-label">
+              Endpoint URL
+            </label>
             <input
               id="endpoint-url"
               type="text"
@@ -141,11 +147,13 @@ export const DeveloperAddRESTfulAPI = () => {
             />
           </div>
         </div>
-        
+
         <div className="row">
           <div className="col-md-4">
             {/* 修正 4: 加上 htmlFor 與 id */}
-            <label htmlFor="schedule-type" className="form-label">Schedule type</label>
+            <label htmlFor="schedule-type" className="form-label">
+              Schedule type
+            </label>
             <select
               id="schedule-type"
               className="form-select mb-2"
@@ -164,9 +172,11 @@ export const DeveloperAddRESTfulAPI = () => {
             />
           </div>
         </div>
-        
+
         {/* 修正 5: 加上 htmlFor 與 id */}
-        <label htmlFor="timeout-seconds" className="form-label">Timeout seconds</label>
+        <label htmlFor="timeout-seconds" className="form-label">
+          Timeout seconds
+        </label>
         <input
           id="timeout-seconds"
           type="number"
@@ -175,7 +185,7 @@ export const DeveloperAddRESTfulAPI = () => {
           value={timeoutSeconds}
           onChange={(e) => setTimeoutSeconds(Number(e.target.value))}
         />
-        
+
         {/* 修正 6: 群組元件改用 div 取代 label，避開語意錯誤 */}
         <div className="form-label">Depends on jobs</div>
         <DependencyPicker
@@ -184,7 +194,7 @@ export const DeveloperAddRESTfulAPI = () => {
           idPrefix="depends-rest"
           onToggle={toggleDependency}
         />
-        
+
         <label htmlFor="headers-json" className="form-label">
           Headers JSON
         </label>
@@ -195,7 +205,7 @@ export const DeveloperAddRESTfulAPI = () => {
           value={headersJson}
           onChange={(e) => setHeadersJson(e.target.value)}
         />
-        
+
         <label htmlFor="body-json" className="form-label">
           Body JSON
         </label>
@@ -207,7 +217,7 @@ export const DeveloperAddRESTfulAPI = () => {
           value={bodyJson}
           onChange={(e) => setBodyJson(e.target.value)}
         />
-        
+
         <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
           {loading ? '建立中...' : '註冊 REST API Job'}
         </button>

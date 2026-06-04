@@ -19,7 +19,10 @@ export const RouteGuard = ({ children, allowedRole }: RouteGuardProps) => {
       showNotification('Please login first!', 'error');
     } else if (permissionDenied) {
       localStorage.removeItem('user');
-      showNotification(`Permission denied! This page is only accessible to ${allowedRole}.`, 'error');
+      showNotification(
+        `Permission denied! This page is only accessible to ${allowedRole}.`,
+        'error'
+      );
     }
   }, [userData, allowedRole, permissionDenied]);
 

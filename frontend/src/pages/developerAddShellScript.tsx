@@ -93,9 +93,11 @@ export const DeveloperAddShellScript = () => {
 
       <div className="container mt-4" style={{ maxWidth: '760px' }}>
         <h4>新增 Shell Script 任務</h4>
-        
+
         {/* 修正 1: 加上 htmlFor 與 id */}
-        <label htmlFor="shell-job-name" className="form-label">Job name</label>
+        <label htmlFor="shell-job-name" className="form-label">
+          Job name
+        </label>
         <input
           id="shell-job-name"
           type="text"
@@ -104,9 +106,11 @@ export const DeveloperAddShellScript = () => {
           value={jobName}
           onChange={(e) => setJobName(e.target.value)}
         />
-        
+
         {/* 修正 2: 加上 htmlFor 與 id */}
-        <label htmlFor="shell-command" className="form-label">Shell command</label>
+        <label htmlFor="shell-command" className="form-label">
+          Shell command
+        </label>
         <textarea
           id="shell-command"
           className="form-control mb-2"
@@ -115,11 +119,13 @@ export const DeveloperAddShellScript = () => {
           value={command}
           onChange={(e) => setCommand(e.target.value)}
         />
-        
+
         <div className="row">
           <div className="col-md-4">
             {/* 修正 3: 加上 htmlFor 與 id */}
-            <label htmlFor="shell-schedule-type" className="form-label">Schedule type</label>
+            <label htmlFor="shell-schedule-type" className="form-label">
+              Schedule type
+            </label>
             <select
               id="shell-schedule-type"
               className="form-select mb-2"
@@ -139,7 +145,9 @@ export const DeveloperAddShellScript = () => {
           </div>
           <div className="col-md-3">
             {/* 修正 4: 加上 htmlFor 與 id */}
-            <label htmlFor="shell-timeout-seconds" className="form-label">Timeout seconds</label>
+            <label htmlFor="shell-timeout-seconds" className="form-label">
+              Timeout seconds
+            </label>
             <input
               id="shell-timeout-seconds"
               type="number"
@@ -150,7 +158,7 @@ export const DeveloperAddShellScript = () => {
             />
           </div>
         </div>
-        
+
         {/* 修正 5: 將 label 換成 div，避免群組元件的語意錯誤 */}
         <div className="form-label">Depends on jobs</div>
         <DependencyPicker
@@ -159,7 +167,7 @@ export const DeveloperAddShellScript = () => {
           idPrefix="depends-shell"
           onToggle={toggleDependency}
         />
-        
+
         <button onClick={handleSubmit} className="btn btn-success" disabled={loading}>
           {loading ? '建立中...' : '註冊 Shell Script Job'}
         </button>

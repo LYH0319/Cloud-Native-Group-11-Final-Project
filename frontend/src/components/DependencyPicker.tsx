@@ -27,7 +27,7 @@ export const DependencyPicker = ({
 
   // 1. Extract nested ternary logic into an independent statement
   let pickerContent;
-  
+
   if (jobs.length === 0) {
     pickerContent = <div className="dependency-picker-empty">No active jobs available</div>;
   } else if (filteredJobs.length === 0) {

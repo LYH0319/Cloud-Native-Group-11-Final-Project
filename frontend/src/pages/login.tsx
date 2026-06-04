@@ -490,7 +490,11 @@ export const Login = () => {
                         setPassword('');
                         setErrMessage('');
                         setResetToken('');
-                        globalThis.history.replaceState({}, document.title, globalThis.location.pathname);
+                        globalThis.history.replaceState(
+                          {},
+                          document.title,
+                          globalThis.location.pathname
+                        );
                         setStep(id ? 'loginPassword' : 'checkId');
                         setCounter(0);
                       }}
