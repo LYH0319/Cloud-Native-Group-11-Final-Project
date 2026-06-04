@@ -47,12 +47,15 @@ def verify_password(plain_password: str, hashed_password: str | None) -> bool:
 def create_access_token(
     subject: str,
     expires_delta: timedelta | None = None,
+    extra_claims: dict[str, Any] | None = None,
 ) -> str:
     """Create a compact HS256 JWT access token."""
     ttl = expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     expires = int(time.time() + ttl.total_seconds())
     header = {"alg": ALGORITHM, "typ": "JWT"}
     payload = {"sub": subject, "exp": expires}
+    if extra_claims:
+        payload.update(extra_claims)
     signing_input = ".".join(
         [
             _base64url_encode(
