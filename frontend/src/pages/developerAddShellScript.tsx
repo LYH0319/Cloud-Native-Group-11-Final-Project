@@ -4,6 +4,7 @@ import Styles from './Style';
 import { createJob, listJobs } from '../api';
 import { type BackendJob, type JobCreatePayload } from '../types/types';
 import { DependencyPicker } from '../components/DependencyPicker';
+import { CronSchedulePicker } from '../components/CronSchedulePicker';
 import { showNotification } from '../components/NotificationCenter';
 
 type ScheduleType = JobCreatePayload['schedule_type'];
@@ -92,6 +93,7 @@ export const DeveloperAddShellScript = () => {
 
       <div className="container mt-4" style={{ maxWidth: '760px' }}>
         <h4>新增 Shell Script 任務</h4>
+        <label className="form-label">Job name</label>
         <input
           type="text"
           className="form-control mb-2"
@@ -99,6 +101,7 @@ export const DeveloperAddShellScript = () => {
           value={jobName}
           onChange={(e) => setJobName(e.target.value)}
         />
+        <label className="form-label">Shell command</label>
         <textarea
           className="form-control mb-2"
           rows={5}
@@ -108,6 +111,7 @@ export const DeveloperAddShellScript = () => {
         />
         <div className="row">
           <div className="col-md-4">
+            <label className="form-label">Schedule type</label>
             <select
               className="form-select mb-2"
               value={scheduleType}
@@ -118,16 +122,14 @@ export const DeveloperAddShellScript = () => {
             </select>
           </div>
           <div className="col-md-5">
-            <input
-              type="text"
-              className="form-control mb-2"
-              placeholder="Cron expression"
+            <CronSchedulePicker
               value={cronExpression}
               disabled={scheduleType !== 'Recurring'}
-              onChange={(e) => setCronExpression(e.target.value)}
+              onChange={setCronExpression}
             />
           </div>
           <div className="col-md-3">
+            <label className="form-label">Timeout seconds</label>
             <input
               type="number"
               className="form-control mb-2"

@@ -1,0 +1,30 @@
+.cron-picker {
+  margin-bottom: 8px;
+}
+
+.cron-picker-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.cron-picker-row .form-select {
+  width: auto;
+  min-width: 84px;
+}
+
+.cron-picker-preview {
+  margin-top: 6px;
+  color: #64748b;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+}
+
+.cron-picker.is-disabled {
+  opacity: 0.65;
+}

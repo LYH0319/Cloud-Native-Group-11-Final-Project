@@ -4,6 +4,29 @@ import { showNotification } from '../components/NotificationCenter';
 
 export const DeveloperHome = () => {
   const navigate = useNavigate();
+  const actionCardStyle = {
+    minHeight: '280px',
+    borderRadius: '12px',
+    border: 'none',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    justifyContent: 'center'
+  };
+  const actionTitleStyle = {
+    minHeight: '96px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 'bold',
+    color: '#333'
+  };
+  const actionButtonStyle = {
+    width: 'min(100%, 260px)',
+    borderRadius: '20px',
+    backgroundColor: '#00A2E8',
+    border: 'none',
+    color: 'white'
+  };
 
   return (
     <div className="bg-light min-vh-100">
@@ -26,50 +49,40 @@ export const DeveloperHome = () => {
       </div>
 
       <div className="container mt-5">
-        <div className="row text-center">
-          <div className="col-md-4 mb-4">
-            <div className="card p-5 shadow-sm" style={{ borderRadius: '12px', border: 'none' }}>
-              <h3 style={{ fontWeight: 'bold', color: '#333' }}>新增 RESTful API 任務</h3>
+        <div className="row text-center align-items-stretch">
+          <div className="col-md-4 mb-4 d-flex">
+            <div className="card p-5 shadow-sm w-100" style={actionCardStyle}>
+              <h3 style={actionTitleStyle}>新增 RESTful API 任務</h3>
               <button
                 onClick={() => navigate('/developer/RESTfulAPI')}
-                className="btn btn-success mt-3 px-4"
-                style={{ borderRadius: '20px', backgroundColor: '#00A2E8', border: 'none' }}
+                className="btn btn-success mt-3 px-4 mx-auto"
+                style={actionButtonStyle}
               >
                 新增
               </button>
             </div>
           </div>
 
-          <div className="col-md-4 mb-4">
-            <div className="card p-5 shadow-sm" style={{ borderRadius: '12px', border: 'none' }}>
-              <h3 style={{ fontWeight: 'bold', color: '#333' }}>新增 Shell Script 任務</h3>
+          <div className="col-md-4 mb-4 d-flex">
+            <div className="card p-5 shadow-sm w-100" style={actionCardStyle}>
+              <h3 style={actionTitleStyle}>新增 Shell Script 任務</h3>
               <button
                 onClick={() => navigate('/developer/ShellScript')}
-                className="btn btn-warning mt-3 px-4"
-                style={{
-                  borderRadius: '20px',
-                  backgroundColor: '#00A2E8',
-                  border: 'none',
-                  color: 'white'
-                }}
+                className="btn btn-warning mt-3 px-4 mx-auto"
+                style={actionButtonStyle}
               >
                 新增
               </button>
             </div>
           </div>
 
-          <div className="col-md-4 mb-4">
-            <div className="card p-5 shadow-sm" style={{ borderRadius: '12px', border: 'none' }}>
-              <h3 style={{ fontWeight: 'bold', color: '#333' }}>我的 Job</h3>
+          <div className="col-md-4 mb-4 d-flex">
+            <div className="card p-5 shadow-sm w-100" style={actionCardStyle}>
+              <h3 style={actionTitleStyle}>我的 Job</h3>
               <button
                 onClick={() => navigate('/developer/jobs')}
-                className="btn btn-info mt-3 px-4"
-                style={{
-                  borderRadius: '20px',
-                  backgroundColor: '#00A2E8',
-                  border: 'none',
-                  color: 'white'
-                }}
+                className="btn btn-info mt-3 px-4 mx-auto"
+                style={actionButtonStyle}
               >
                 查看
               </button>
