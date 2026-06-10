@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: group11-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_HOST=192.168.10.6  # 指向 VM6 Data Node
+      - REDIS_PORT=6379
+      - LOG_ROOT=/app/logs
+      # 提示：請確保你的 ./backend/.env 裡面的 DATABASE_URL 或是 DB_HOST 
+      # 也要改成 192.168.10.6，而不是 localhost 或 db
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    user: root
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_HOST=192.168.10.6  # 指向 VM6 Data Node
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app
+      - LOG_ROOT=/app/logs
+    restart: always

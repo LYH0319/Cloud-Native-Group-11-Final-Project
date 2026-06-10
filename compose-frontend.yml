@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: group11-frontend
+    ports:
+      - "3000:5173"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--force"]
+    environment:
+      # 關鍵：讓前端網頁瀏覽器知道，API 請求一律打給 VM1 (Load Balancer)
+      - NEXT_PUBLIC_API_URL=http://192.168.10.1:8000 
+    restart: unless-stopped
