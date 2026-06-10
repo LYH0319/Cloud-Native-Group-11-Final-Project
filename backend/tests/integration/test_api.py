@@ -234,9 +234,7 @@ def test_admin_can_list_and_delete_other_users(client, api_db_session):
         "/api/auth/login-password",
         json={"employee_id": "admin", "password": "admin"},
     )
-    admin_headers = {
-        "Authorization": f"Bearer {admin_login.json()['access_token']}"
-    }
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
     created = client.post(
         "/api/auth/register",
         json={
@@ -276,9 +274,7 @@ def test_admin_cannot_delete_builtin_admin(client, api_db_session):
         "/api/auth/login-password",
         json={"employee_id": "admin", "password": "admin"},
     )
-    admin_headers = {
-        "Authorization": f"Bearer {admin_login.json()['access_token']}"
-    }
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
     users_response = client.get("/api/auth/users", headers=admin_headers)
     admin_user = next(
         user for user in users_response.json() if user["employee_id"] == "admin"

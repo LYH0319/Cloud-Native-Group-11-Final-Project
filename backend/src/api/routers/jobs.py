@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Annotated
 import src.database.crud as crud
 import src.database.schemas as schemas
+# from src.api import metrics
 from src.api.dependencies import get_current_user
 from src.database.core import get_db
 from src.database.models import JobStatus, TriggerType, User, UserRole
@@ -30,9 +31,7 @@ def require_accessible_job(job_id: int, db: Session, current_user: User):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
         )
-    if job.owner_id != current_user.user_id and not can_operate_all_jobs(
-        current_user
-    ):
+    if job.owner_id != current_user.user_id and not can_operate_all_jobs(current_user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
@@ -42,7 +41,7 @@ def require_accessible_job(job_id: int, db: Session, current_user: User):
 
 @router.get("/", response_model=list[schemas.JobResponse])
 def list_jobs(
-    db: Annotated[Session, Depends(get_db)] = None,                  
+    db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """List own jobs for developers and all jobs for operators/admins."""
@@ -56,7 +55,7 @@ def list_jobs(
 @router.get("/{job_id}", response_model=schemas.JobResponse)
 def get_job(
     job_id: int,
-    db: Annotated[Session, Depends(get_db)] = None,                  
+    db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Return one job if it belongs to the authenticated user."""
@@ -67,7 +66,7 @@ def get_job(
 @router.post("/", status_code=status.HTTP_201_CREATED)
 def register_job(
     payload: schemas.JobCreate,
-    db: Annotated[Session, Depends(get_db)] = None,                  
+    db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     depends_on = payload.depends_on or []
@@ -96,6 +95,7 @@ def register_job(
             job_in=payload,
             initialize_next_run_time=True,
         )
+        # metrics.job_creations_total.inc()
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -126,7 +126,7 @@ def register_job(
 )
 def manually_trigger_job(
     job_id: int,
-    db: Annotated[Session, Depends(get_db)] = None,                  
+    db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Create a manual execution and enqueue it for worker execution."""
@@ -151,6 +151,7 @@ def manually_trigger_job(
         job_id=job_id,
         trigger_type=TriggerType.MANUAL,
     )
+    # metrics.job_triggers_total.inc()
     dispatch_info = dispatch_task(
         execution_id=execution.execution_id,
         job_dict=crud.job_to_task_dict(job),
@@ -171,7 +172,7 @@ def manually_trigger_job(
 def update_job_status(
     job_id: int,
     payload: schemas.JobStatusUpdate,
-    db: Annotated[Session, Depends(get_db)] = None,                  
+    db: Annotated[Session, Depends(get_db)] = None,
     current_user: Annotated[User, Depends(get_current_user)] = None,
 ):
     """Allow operators/admins to pause or resume jobs."""

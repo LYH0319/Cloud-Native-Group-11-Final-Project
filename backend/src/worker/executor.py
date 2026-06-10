@@ -33,6 +33,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("WorkerExecutor")
 
+# db_session_factory = sessionmaker(bind=engine)
+# db_session = scoped_session(db_session_factory)
+
 
 def get_worker_id() -> str:
     return os.getenv("WORKER_ID") or socket.gethostname() or "group11-worker"
@@ -182,7 +185,7 @@ def report_to_database(
     )
 
     # 建立資料庫連線 Session
-    db: Session = SessionLocal()
+    db = SessionLocal()
     try:
         worker_id = get_worker_id()
         if log_path is not None:
@@ -209,6 +212,8 @@ def report_to_database(
                 error_message=error_message,
             )
 
+        db.commit()
+
         if updated_record and updated_record.duration is not None:
             logger.info(
                 f"[DB Sync 成功] Exec ID {execution_id} 處理結束，系統自動計算耗時: {updated_record.duration} 秒"
@@ -216,6 +221,7 @@ def report_to_database(
 
     except Exception as e:
         # NFR: 可靠性 (Reliability) - 捕捉資料庫異常，避免 Worker 核心迴圈因為 DB 波動而集體死機
+        # db.rollback()
         logger.error(f"[DB Sync 異常] 寫入 MySQL 失敗: {str(e)}")
     finally:
         db.close()  # 務必關閉 Session，釋放連線池資源

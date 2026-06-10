@@ -1,0 +1,104 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "project-estimated-usage",
+    "title": "Project Estimated Usage",
+    "timezone": "browser",
+    "schemaVersion": 41,
+    "version": 1,
+    "refresh": "30s",
+    "annotations": {
+      "list": []
+    },
+    "templating": {
+      "list": []
+    },
+    "panels": [
+      {
+        "id": 1,
+        "type": "table",
+        "title": "Estimated Usage",
+        "gridPos": {
+          "h": 10,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "project_estimated_usage",
+            "legendFormat": "{{tier}} / {{category}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "options": {
+          "showHeader": true,
+          "showFooter": false
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "Total API Requests",
+        "gridPos": {
+          "h": 6,
+          "w": 8,
+          "x": 0,
+          "y": 10
+        },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(app_http_requests_total)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none"
+          },
+          "overrides": []
+        },
+        "options": {
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          }
+        }
+      },
+      {
+        "id": 3,
+        "type": "timeseries",
+        "title": "API Request Rate",
+        "gridPos": {
+          "h": 6,
+          "w": 16,
+          "x": 8,
+          "y": 10
+        },
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(app_http_requests_total[1m])",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps"
+          },
+          "overrides": []
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}

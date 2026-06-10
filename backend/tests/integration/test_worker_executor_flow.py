@@ -113,7 +113,9 @@ def test_worker_process_task_updates_execution_and_log_reference(
 
     executor.process_task(task, FakeRedis())
 
-    updated = crud.get_execution_by_id(db=db_session, execution_id=execution.execution_id)
+    updated = crud.get_execution_by_id(
+        db=db_session, execution_id=execution.execution_id
+    )
     log_reference = crud.get_log_reference_by_execution_id(
         db=db_session,
         execution_id=execution.execution_id,

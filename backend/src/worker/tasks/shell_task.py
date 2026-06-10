@@ -12,7 +12,9 @@ def run_shell_task(payload: dict[str, Any], timeout_threshold: int):
     """Execute a shell command/script and return the worker result shape."""
     config = _shell_config(payload)
     command = config.get("command") or config.get("script")
-    timeout = config.get("timeout_seconds") or config.get("timeout") or timeout_threshold
+    timeout = (
+        config.get("timeout_seconds") or config.get("timeout") or timeout_threshold
+    )
 
     if not command:
         return {
@@ -37,7 +39,9 @@ def run_shell_task(payload: dict[str, Any], timeout_threshold: int):
         duration = time.monotonic() - started
         return_code = process.returncode
         status = "Success" if return_code == 0 else "Failed"
-        error_message = "" if return_code == 0 else f"Shell exited with code {return_code}"
+        error_message = (
+            "" if return_code == 0 else f"Shell exited with code {return_code}"
+        )
         return {
             "status": status,
             "duration": duration,

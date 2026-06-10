@@ -10,6 +10,7 @@ def utc_now_naive() -> datetime:
     """Return UTC time as a naive datetime for DATETIME columns."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+
 # ==========================================
 # ENUMS
 # ==========================================

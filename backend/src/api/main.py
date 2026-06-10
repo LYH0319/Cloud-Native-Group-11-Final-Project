@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
 from src.api.routers import auth, history, jobs
+
 from src.database.connection import Base, engine
 from src.database.core import ensure_default_admin, ensure_schema_compatibility
 
@@ -29,6 +30,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# app.add_middleware(metrics.PrometheusMiddleware)
 
 
 @app.on_event("startup")
@@ -62,3 +65,4 @@ def root():
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+# app.include_router(metrics.router)

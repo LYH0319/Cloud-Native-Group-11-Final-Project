@@ -1,5 +1,4 @@
 import pytest
-import math
 from pydantic import ValidationError
 
 from src.worker.schemas import HeartbeatState, TaskPayload
