@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: group11-redis
+    ports:
+      - "6379:6379"  # 必須對外開放 Port，別台 VM 的 backend/worker 才連得進來
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.4
+    container_name: group11-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"  # 必須對外開放 Port
+    env_file:
+      - ./backend/.env
+    environment:
+      TZ: Asia/Taipei
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    command: ["python", "src/scheduler/cron_scheduler.py"]
+    volumes:
+      - ./backend:/app
+      - ./logs:/app/logs
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_HOST=127.0.0.1  # 因為跟 redis 在同一台，用 127.0.0.1 即可
+      - REDIS_PORT=6379
+      - PYTHONPATH=/app
+      - LOG_ROOT=/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: group11-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=k6
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: group11-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+volumes:
+  mysql_data:
+  redis_data:
+  grafana_data:
