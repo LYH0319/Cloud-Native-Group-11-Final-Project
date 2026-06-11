@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loginStyles } from './Style';
-import { getStoredUser, storeUserFromTokenResponse } from '../api';
 import { type User, type TokenResponse } from '../types/types';
+import { getStoredUser, storeUserFromTokenResponse, API_BASE_URL } from '../api';
 
 type LoginStep =
   | 'checkId'
@@ -63,7 +63,7 @@ export const Login = () => {
     setId(trimmedId);
 
     try {
-      const response = await fetch('/api/auth/check-id', {
+      const response = await fetch(`${API_BASE_URL}/auth/check-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: trimmedId })
@@ -97,7 +97,7 @@ export const Login = () => {
     setErrMessage('');
 
     try {
-      const response = await fetch('/api/auth/register-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/register-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: id, password })
@@ -125,7 +125,7 @@ export const Login = () => {
     setErrMessage('');
 
     try {
-      const response = await fetch('/api/auth/login-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/login-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: id, password })
@@ -163,7 +163,7 @@ export const Login = () => {
     setId(trimmedId);
 
     try {
-      const response = await fetch('/api/auth/forgot-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employee_id: trimmedId })
@@ -200,7 +200,7 @@ export const Login = () => {
     }
 
     try {
-      const response = await fetch('/api/auth/reset-password', {
+      const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken, new_password: password })

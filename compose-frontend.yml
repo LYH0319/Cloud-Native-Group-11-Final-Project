@@ -9,5 +9,6 @@ services:
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--force"]
     environment:
       # 關鍵：讓前端網頁瀏覽器知道，API 請求一律打給 VM1 (Load Balancer)
-      - NEXT_PUBLIC_API_URL=http://192.168.10.1:8000 
+      # - NEXT_PUBLIC_API_URL=http://192.168.10.1:8000
+      - VITE_API_URL=http://127.0.0.1:8081/api
     restart: unless-stopped

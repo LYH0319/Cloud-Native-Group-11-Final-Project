@@ -8,7 +8,8 @@ import {
   type User
 } from './types/types';
 
-export const API_BASE_URL = '/api';
+//export const API_BASE_URL = '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const roleFromBackend = (role: string): Role => {
   const normalized = role.toLowerCase();
