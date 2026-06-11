@@ -6,7 +6,7 @@ WORKDIR /app
 
 # 複製環境清單並安裝
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --default-timeout=100 --no-cache-dir -r requirements.txt
 
 # 將後端程式碼全部複製進去
 COPY . .
