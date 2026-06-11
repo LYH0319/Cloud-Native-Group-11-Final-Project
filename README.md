@@ -1,307 +1,370 @@
 # Cloud-Native Group 11 Final Project
 
-本專案是一個雲原生任務排程與執行系統，採前後端分離架構。前端使用 React + TypeScript + Vite，後端使用 FastAPI，並透過 MySQL、Redis、Scheduler 與 Worker 完成 Job 建立、排程、派發、執行、紀錄與查詢。
+Cloud-Native Group 11 Final Project is a cloud-native job scheduling and execution platform. The system provides a web console for developers, operators, and administrators to create jobs, configure schedules, define dependencies, trigger executions, inspect run history, and monitor execution logs.
 
-## 快速啟動整個專案
+The project uses a separated frontend and backend architecture. The frontend is built with React, TypeScript, and Vite. The backend is built with FastAPI and SQLAlchemy, with MySQL for persistence, Redis for queueing, a scheduler service for cron-based dispatching, and worker services for executing jobs.
 
-建議使用 Docker Compose 一次啟動完整前後端與基礎服務。
+## Table of Contents
 
-### 1. 前置需求
+- [System Overview](#system-overview)
+- [Core Features](#core-features)
+- [Architecture](#architecture)
+- [Technology Stack](#technology-stack)
+- [Repository Structure](#repository-structure)
+- [Quick Start](#quick-start)
+- [Environment Variables](#environment-variables)
+- [Local Development](#local-development)
+- [Testing](#testing)
+- [Observability and Load Testing](#observability-and-load-testing)
+- [Distributed Deployment](#distributed-deployment)
+- [Troubleshooting](#troubleshooting)
+
+## System Overview
+
+The platform is designed around the lifecycle of a job:
+
+1. A user signs in through the frontend.
+2. A developer creates a REST API job or shell script job.
+3. The scheduler or a manual trigger creates an execution record.
+4. The execution payload is pushed into Redis.
+5. A worker consumes the payload, runs the task, and reports the result.
+6. The backend stores execution status, timing, worker metadata, and log references.
+7. Operators and administrators review job status, execution history, metrics, and logs.
+
+The system supports role-based access control:
+
+| Role | Capabilities |
+| --- | --- |
+| Developer | Create jobs, manage owned jobs, trigger owned jobs, view owned execution history |
+| Operator | View and operate all jobs, pause or resume jobs, rerun executions, inspect system execution history |
+| Admin | Operator capabilities plus user account management and password reset |
+
+## Core Features
+
+- User authentication with JWT access tokens
+- Built-in default admin account initialization
+- Role-based job and execution permissions
+- REST API job registration
+- Shell script job registration
+- Manual job triggering
+- Cron-style scheduled execution
+- Job dependency management with cycle detection
+- Execution history filtering and detail view
+- Execution log metadata and log content retrieval
+- Worker result reporting and heartbeat-oriented execution tracking
+- Redis-backed task queue
+- Horizontally scalable worker service
+- Password reset flow with optional SMTP email delivery
+- Prometheus metrics endpoint
+- Grafana dashboard provisioning
+- k6 load test scripts
+- Backend and frontend CI workflows
+
+## Architecture
+
+```text
+Browser
+  |
+  v
+React Frontend
+  |
+  v
+FastAPI Backend
+  |                    |
+  |                    v
+  |              Prometheus / Grafana
+  |
+  +--> MySQL
+  |
+  +--> Redis Queue <--> Worker Service
+  |
+  +--> Scheduler Service
+```
+
+Main runtime services:
+
+| Service | Description | Default URL |
+| --- | --- | --- |
+| `frontend` | React and Vite web application | `http://localhost:3000` |
+| `backend` | FastAPI API server | `http://localhost:8000` |
+| `db` | MySQL 8.4 database | Internal Docker network |
+| `redis` | Redis task queue | Internal Docker network |
+| `worker` | Job execution worker | Internal Docker network |
+| `scheduler` | Cron scheduler and dispatcher | Internal Docker network |
+| `prometheus` | Metrics scraper | `http://localhost:9090` |
+| `grafana` | Metrics dashboard | `http://localhost:3001` |
+| `influxdb` | k6 time-series output database | `http://localhost:8086` |
+
+## Technology Stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Bootstrap, Vitest, Prettier |
+| Backend API | FastAPI, Pydantic, SQLAlchemy |
+| Database | MySQL 8.4 |
+| Queue | Redis 7 |
+| Worker | Python worker process with Redis queue consumption |
+| Scheduler | Python cron scheduler service |
+| Observability | Prometheus, Grafana, FastAPI metrics middleware |
+| Load Testing | k6, InfluxDB |
+| DevOps | Docker, Docker Compose, GitHub Actions |
+
+## Repository Structure
+
+```text
+.
+|-- backend/
+|   |-- config/                  # Backend settings and environment loading
+|   |-- src/
+|   |   |-- api/                 # FastAPI app, routers, dependencies, metrics
+|   |   |-- database/            # SQLAlchemy models, schemas, CRUD helpers
+|   |   |-- scheduler/           # Cron scheduler service
+|   |   |-- utils/               # Security, logging, email, dependency cycle detection
+|   |   `-- worker/              # Worker executor, queue manager, task runners
+|   |-- tests/                   # Unit and integration tests
+|   |-- Dockerfile               # Backend API image
+|   |-- Dockerfile.worker        # Worker and scheduler image
+|   |-- requirements.txt         # Python dependencies
+|   `-- pytest.ini               # Pytest configuration
+|
+|-- frontend/
+|   |-- public/                  # Static assets
+|   |-- src/
+|   |   |-- components/          # Shared UI components
+|   |   |-- pages/               # Login, home, admin, developer, operator, monitor pages
+|   |   |-- types/               # Shared TypeScript types
+|   |   |-- api.ts               # API client helpers
+|   |   `-- App.tsx              # Application routing
+|   |-- tests/                   # Frontend tests
+|   |-- Dockerfile               # Frontend image
+|   |-- package.json             # npm scripts and dependencies
+|   `-- vite.config.ts           # Vite and API proxy configuration
+|
+|-- monitoring/
+|   |-- prometheus.yml
+|   `-- grafana/
+|       |-- dashboards/
+|       `-- provisioning/
+|
+|-- logs/                        # Mounted execution log directory
+|-- docker-compose.yml           # Full local single-host stack
+|-- compose-data.yml             # Data node compose file for distributed deployment
+|-- compose-backend.yml          # Backend and worker compose file for distributed deployment
+|-- compose-frontend.yml         # Frontend compose file for distributed deployment
+|-- k6_load_test.js              # k6 load test
+|-- k6_scenarios.json            # k6 scenario configuration
+|-- phase2_test.js               # Additional phase 2 load test script
+`-- README.md
+```
+
+## Quick Start
+
+### Prerequisites
 
 - Docker Desktop
 - Git
-- 若要本機開發前端，需要 Node.js 與 npm
-- 若要本機開發後端，需要 Python 3.10 以上
+- Node.js and npm, only required for local frontend development
+- Python 3.11 recommended, only required for local backend development
 
-### 2. 準備後端環境變數
+### 1. Prepare Environment Files
 
-在專案根目錄確認 `backend/.env` 以及 `.env` 存在。若尚未建立，可由範例檔複製：
+Create the backend environment file from the example:
 
-```bash
+```powershell
 copy backend\.env.example backend\.env
-copy .\.env.example .\.env
 ```
 
-Docker Compose 會使用 `backend/.env` 啟動 MySQL 與後端服務。Docker 環境中的 `DATABASE_URL` 應指向 Compose service name `db`，例如：
+For Docker Compose, make sure `backend/.env` contains a database URL that points to the Compose database service:
 
 ```text
 DATABASE_URL=mysql+pymysql://api_worker:PASSWORD_group11@db:3306/job_scheduler
 ```
 
-若要啟用「忘記密碼」的 email reset link，請在 `backend/.env` 設定 SMTP。以 Gmail 為例：
+### 2. Start the Full Stack
 
-```text
-RESET_PASSWORD_BASE_URL=http://localhost:3000
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USE_TLS=true
-SMTP_FROM=noreplyjobschedulersystem@gmail.com
-SMTP_FROM_NAME=Job Scheduler System
-SMTP_USERNAME=noreplyjobschedulersystem@gmail.com
-SMTP_PASSWORD=your-gmail-app-password
-```
+Run from the repository root:
 
-注意：
-
-- `SMTP_USERNAME` 必須是完整 Gmail 地址。
-- `SMTP_PASSWORD` 必須是 Google 產生的 16 字元 App Password，不是一般 Gmail 登入密碼。
-- `SMTP_FROM_NAME` 只是寄件者顯示名稱，不可拿來當 SMTP username。
-- 若未設定 `SMTP_HOST`，後端會把 reset link 印在 backend log，方便本機開發測試。
-- Docker Compose 使用 `backend/.env`，修改後請重啟 backend：
-
-```bash
-docker compose restart backend
-```
-
-### 3. 啟動完整服務
-
-在專案根目錄執行：
-
-```bash
+```powershell
 docker compose up -d --build
 ```
 
-這會啟動：
-
-| Service | 說明 | 對外網址 |
-| :--- | :--- | :--- |
-| `frontend` | React/Vite 前端 | `http://localhost:3000` |
-| `backend` | FastAPI 後端 API | `http://localhost:8000` |
-| `db` | MySQL 8.4 | 僅 Compose 內部網路 |
-| `redis` | Redis queue | 僅 Compose 內部網路 |
-| `worker` | 任務執行 Worker | 僅 Compose 內部網路 |
-| `scheduler` | 排程掃描與派發服務 | 僅 Compose 內部網路 |
-
-開啟前端：
+Open the application:
 
 ```text
 http://localhost:3000
 ```
 
-檢查後端健康狀態：
+Check the backend health endpoint:
 
-```bash
+```powershell
 curl.exe http://localhost:8000/api/health
 ```
 
-正常會回傳：
+Expected response:
 
 ```json
 {"status":"ok"}
 ```
 
-FastAPI 文件：
+FastAPI documentation is available at:
 
 ```text
 http://localhost:8000/docs
 ```
 
-### 4. 常用 Docker 指令
+### 3. Default Admin Account
 
-```bash
-# 查看服務狀態
+On backend startup, the system ensures a built-in administrator account exists:
+
+```text
+Employee ID: admin
+Password: admin
+```
+
+Use this account for initial administration and user management.
+
+### 4. Useful Docker Commands
+
+```powershell
+# Show running services
 docker compose ps
 
-# 查看全部 log
+# Show all logs
 docker compose logs
 
-# 查看後端 log
-docker compose logs backend
+# Follow backend logs
+docker compose logs -f backend
 
-# 查看 worker log
-docker compose logs worker
+# Follow worker logs
+docker compose logs -f worker
 
-# 重新 build 並啟動
+# Rebuild and restart all services
 docker compose up -d --build
 
-# 重啟後端
+# Restart only the backend
 docker compose restart backend
 
-# 停止所有服務
+# Scale workers
+docker compose up -d --scale worker=3
+
+# Stop the stack
 docker compose down
 ```
 
-若要同時啟動多個 worker：
+## Environment Variables
 
-```bash
-docker compose up -d --build --scale worker=3
-```
+The backend uses `backend/.env` in Docker Compose and may use `.env.local` for local Python execution.
 
-## 本機開發啟動方式
+Required database variables:
 
-Docker Compose 是完整專案最推薦的啟動方式。若需要分開開發前端或後端，可參考以下流程。
+| Variable | Description |
+| --- | --- |
+| `MYSQL_ROOT_PASSWORD` | MySQL root password used by the container |
+| `MYSQL_DATABASE` | Database name created by the MySQL container |
+| `MYSQL_USER` | Application database user |
+| `MYSQL_PASSWORD` | Application database password |
+| `DATABASE_URL` | SQLAlchemy database URL |
 
-### 後端本機開發
+Runtime variables:
 
-進入後端目錄：
+| Variable | Description | Default |
+| --- | --- | --- |
+| `REDIS_HOST` | Redis host | `localhost` |
+| `REDIS_PORT` | Redis port | `6379` |
+| `REDIS_DB` | Redis database index | `0` |
+| `JOB_QUEUE_NAME` | Redis queue name | `job_priority_queue` |
+| `HEARTBEAT_INTERVAL` | Worker heartbeat interval in seconds | `30` |
+| `HEARTBEAT_TIMEOUT` | Worker heartbeat timeout in seconds | `60` |
+| `DEFAULT_TASK_TIMEOUT` | Default job execution timeout in seconds | `300` |
+| `MAX_EXECUTION_RETRIES` | Default retry limit | `1` |
+| `LOG_ROOT` | Execution log root directory | `/app/logs` in Docker |
 
-```bash
+Password reset email variables:
+
+| Variable | Description |
+| --- | --- |
+| `RESET_PASSWORD_BASE_URL` | Frontend URL used to generate reset links |
+| `SMTP_HOST` | SMTP server host |
+| `SMTP_PORT` | SMTP server port |
+| `SMTP_USE_TLS` | Whether SMTP uses TLS |
+| `SMTP_FROM` | Sender email address |
+| `SMTP_FROM_NAME` | Sender display name |
+| `SMTP_USERNAME` | SMTP username |
+| `SMTP_PASSWORD` | SMTP password or app password |
+
+If SMTP is not configured, local development can still use the password reset flow by reading backend logs, depending on the current email helper behavior.
+
+## Local Development
+
+Docker Compose is the recommended way to run the complete system. The following commands are useful when developing one layer at a time.
+
+### Backend
+
+```powershell
 cd backend
-```
-
-安裝套件：
-
-```bash
 python -m pip install -r requirements.txt
-```
-
-啟動 API：
-
-```bash
 python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-注意：
+When running the backend directly on the host machine, `DATABASE_URL` must point to a host-accessible database, for example:
 
-- 後端需要可連線的 MySQL 與 Redis。
-- 若後端在本機直接執行，`DATABASE_URL` 不能使用 Docker 內部 hostname `db`，需改成可從本機連到的 MySQL 位址，例如 `localhost`。
-- 目前 `docker-compose.yml` 沒有把 MySQL 與 Redis port publish 到 host，所以完整本機後端開發時，需要另外開本機 MySQL/Redis，或調整 Compose port 設定。
+```text
+DATABASE_URL=mysql+pymysql://api_worker:PASSWORD_group11@localhost:3306/job_scheduler
+```
 
-### 前端本機開發
+The default `docker-compose.yml` keeps MySQL and Redis on the internal Docker network. If you want the host backend process to connect to Compose-managed MySQL and Redis, expose the required ports or use `compose-data.yml`.
 
-進入前端目錄：
+### Frontend
 
-```bash
+```powershell
 cd frontend
-```
-
-安裝套件：
-
-```bash
 npm install
-```
-
-啟動 Vite：
-
-```bash
 npm run dev
 ```
 
-開啟：
+The Vite development server normally opens at:
 
 ```text
 http://localhost:5173
 ```
 
-注意：前端 API 使用 `/api`，並透過 `frontend/vite.config.ts` proxy 到後端。Docker 內執行時 target 是 `http://backend:8000`。如果你在本機直接跑 `npm run dev`，需要把 proxy target 改成：
+The frontend calls backend APIs through `/api`. In `frontend/vite.config.ts`, the current proxy target is:
+
+```text
+http://backend:8000
+```
+
+For direct local frontend development outside Docker, change the proxy target to:
 
 ```text
 http://localhost:8000
 ```
 
-或使用 Docker Compose 的 `frontend` service，直接開 `http://localhost:3000`。
+## Testing
 
-## 專案開發目錄架構
+### Backend
 
-```text
-Cloud-Native-Group-11-Final-Project/
-|
-|-- .github/
-|   `-- workflows/
-|       |-- ci-backend.yaml          # 後端 CI：flake8、pytest
-|       |-- ci-frontend.yaml         # 前端 CI：typecheck、format check、test
-|       `-- cd.yaml                  # CD workflow 範例
-|
-|-- backend/                         # FastAPI 後端、Scheduler、Worker
-|   |-- config/
-|   |   `-- setting.py               # 後端設定與環境變數
-|   |
-|   |-- src/
-|   |   |-- api/
-|   |   |   |-- main.py              # FastAPI app、CORS、router 掛載、health check
-|   |   |   |-- dependencies.py      # API dependency，例如 current user
-|   |   |   |-- security.py          # API 安全相關輔助
-|   |   |   |-- schemas.py           # API schema 輔助
-|   |   |   `-- routers/
-|   |   |       |-- auth.py          # 註冊、登入、使用者認證
-|   |   |       |-- jobs.py          # Job 建立、查詢、狀態更新、手動觸發
-|   |   |       `-- history.py       # Execution history、rerun、logs 查詢
-|   |   |
-|   |   |-- database/
-|   |   |   |-- core.py              # SQLAlchemy engine/session、DB 初始化
-|   |   |   |-- connection.py        # database 對外相容匯出
-|   |   |   |-- models.py            # User、Job、Execution、Dependency、LogReference
-|   |   |   |-- schemas.py           # Pydantic schemas
-|   |   |   `-- crud.py              # CRUD 與任務業務邏輯 helper
-|   |   |
-|   |   |-- scheduler/
-|   |   |   `-- cron_scheduler.py    # 掃描到期 Job，建立 execution 並派發任務
-|   |   |
-|   |   |-- worker/
-|   |   |   |-- executor.py          # Worker 主流程、任務 dispatch 與回報
-|   |   |   |-- queue_manager.py     # Redis queue 操作
-|   |   |   |-- schemas.py           # Worker payload schema
-|   |   |   `-- tasks/
-|   |   |       |-- http_task.py       # HTTP 任務執行
-|   |   |       `-- shell_task.py    # Shell 任務執行
-|   |   |
-|   |   `-- utils/
-|   |       |-- cycle_detection.py   # Job dependency cycle detection
-|   |       |-- email.py             # Password reset email / SMTP helper
-|   |       |-- logger.py            # Execution log 寫入與讀取
-|   |       `-- security.py          # 密碼 hash、JWT 建立與驗證
-|   |
-|   |-- tests/
-|   |   |-- unit/                   # 單元測試
-|   |   |-- integration/            # API、DB、Scheduler、Worker 整合測試
-|   |   `-- helpers/                # 手動測試輔助腳本
-|   |
-|   |-- Dockerfile                  # FastAPI backend image
-|   |-- Dockerfile.worker           # Worker / Scheduler image
-|   |-- requirements.txt            # Python dependencies
-|   |-- pytest.ini                  # pytest 設定
-|   |-- .env.example                # 後端環境變數範例
-|   `-- .env                        # 後端實際環境變數，本機不提交敏感資訊
-|
-|-- frontend/                       # React + TypeScript + Vite 前端
-|   |-- public/                     # 靜態資源
-|   |-- src/
-|   |   |-- App.tsx                 # 前端路由與主 app
-|   |   |-- api.ts                  # API 呼叫 helper
-|   |   |-- main.tsx                # React entry
-|   |   |-- index.css               # 全域樣式
-|   |   |-- components/             # 共用元件與 route guard
-|   |   |-- pages/                  # Login、Admin、Operator、Developer、JobMonitor 等頁面
-|   |   |-- types/                  # TypeScript 型別
-|   |   `-- assets/                 # 圖片與前端資源
-|   |
-|   |-- tests/                      # 前端測試
-|   |-- backend-flow-test.html      # 開發用單檔 API flow 測試頁
-|   |-- Dockerfile                  # Frontend image
-|   |-- package.json                # npm scripts 與 dependencies
-|   |-- vite.config.ts              # Vite 設定與 API proxy
-|   |-- vitest.config.ts            # Vitest 設定
-|   `-- tsconfig*.json              # TypeScript 設定
-|
-|-- logs/                           # Worker execution logs 掛載目錄
-|-- docker-compose.yml              # 一次啟動 frontend/backend/db/redis/worker/scheduler
-|-- CONTRIBUTING.md                 # 協作規範
-`-- README.md                       # 專案說明
-```
-
-## 測試與檢查
-
-### 後端測試
-
-```bash
+```powershell
 cd backend
 
-# 全部後端測試
+# Run all backend tests
 python -m pytest
 
-# 只跑 unit tests
+# Run unit tests
 python -m pytest -m unit
 
-# 只跑 integration tests
+# Run integration tests
 python -m pytest -m integration
 
-# CI 使用的語法級 flake8 檢查
+# Run the syntax-level flake8 check used by CI
 python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 ```
 
-### 前端測試
+The backend CI workflow runs on Python 3.11 and executes flake8 plus pytest.
 
-```bash
+### Frontend
+
+```powershell
 cd frontend
 
 # TypeScript type check
@@ -317,113 +380,140 @@ npm run format:check
 npm run build
 ```
 
-## 開發用 API Flow 測試頁
+The frontend CI workflow runs on Node.js 22 and 24, then executes typecheck, Vitest, and Prettier check.
 
-`frontend/backend-flow-test.html` 是開發用的單檔測試頁，可快速測：
+## Observability and Load Testing
 
-- health check
-- 註冊與登入
-- 忘記密碼與 email reset link
-- 建立 Job
-- 列出 Job
-- 手動觸發 Job
-- 查詢 execution history
-- 查詢 execution detail 與 logs
+### Metrics
 
-啟動方式：
-
-```bash
-cd frontend
-python -m http.server 5500
-```
-
-瀏覽器開啟：
+The backend exposes Prometheus metrics at:
 
 ```text
-http://localhost:5500/backend-flow-test.html
+http://localhost:8000/metrics
 ```
 
-頁面中的 API 根路徑請填：
+Prometheus is available at:
 
 ```text
-http://localhost:8000/api
+http://localhost:9090
 ```
 
-## CI/CD 本地測試
-
-若要用 `act` 模擬 GitHub Actions：
-
-```bash
-# 模擬 push，跑完整 workflow
-act push
-
-# 單獨跑前端或後端 workflow
-act -W .github/workflows/ci-frontend.yaml
-act -W .github/workflows/ci-backend.yaml
-```
-
-## 常見問題
-
-### 前端顯示 Failed to fetch
-
-請確認：
-
-- 後端健康檢查 `http://localhost:8000/api/health` 可以回傳 `{"status":"ok"}`
-- Docker Compose 前端請開 `http://localhost:3000`
-- 本機 Vite 前端請確認 `vite.config.ts` proxy target 指到可連線的後端
-
-### 後端連不到資料庫
-
-請確認：
-
-- `backend/.env` 存在
-- Docker Compose 環境的 `DATABASE_URL` host 是 `db`
-- 若後端在本機直接跑，`DATABASE_URL` host 需改成 `localhost` 或其他本機可連的 MySQL 位址
-
-### 忘記密碼寄信失敗
-
-若前端顯示：
+Grafana is available at:
 
 ```text
-SMTP email delivery failed. Please check SMTP_USERNAME and SMTP_PASSWORD.
+http://localhost:3001
 ```
 
-請確認：
-
-- `backend/.env` 的 `SMTP_USERNAME` 是完整 Gmail 地址，例如 `noreplyjobschedulersystem@gmail.com`
-- `SMTP_PASSWORD` 是 Gmail App Password，不是一般登入密碼
-- 該 Gmail 帳號已開啟 2-Step Verification
-- 修改 `.env` 後已重啟 backend：`docker compose restart backend`
-- 若只是本機測試、不想真的寄信，可暫時註解 `SMTP_HOST`，後端會把 reset link 印在 backend log
-
-Gmail App Password 取得方式：
-
-1. 前往 Google 帳戶安全性頁面：`https://myaccount.google.com/security`
-2. 開啟 2-Step Verification
-3. 前往 App Passwords：`https://myaccount.google.com/apppasswords`
-4. 建立一組 App Password，名稱可填 `Job Scheduler System`
-5. 將產生的 16 字元密碼填入 `SMTP_PASSWORD`
-
-### 忘記密碼帳號未綁定 email
-
-若使用者忘記密碼，但帳號沒有 email，前端會顯示：
+Default Grafana credentials:
 
 ```text
-此帳號未綁定 email，請聯絡管理員重設密碼
+Username: admin
+Password: admin
 ```
 
-此時請由 Admin 進入管理者專區，在帳號清單中點選「重設密碼」替使用者設定新密碼。
+Provisioned dashboards and data sources are stored under `monitoring/grafana`.
 
-### 修改後端程式後沒有生效
+### k6 Load Tests
 
-可重啟後端服務：
+The repository includes k6 scripts for load and phase testing:
 
-```bash
+```powershell
+k6 run k6_load_test.js
+k6 run phase2_test.js
+```
+
+InfluxDB is included in the Compose stack for k6 time-series output.
+
+## Distributed Deployment
+
+In addition to the single-host `docker-compose.yml`, the repository provides split Compose files for distributed deployment:
+
+| File | Intended role |
+| --- | --- |
+| `compose-data.yml` | Runs MySQL, Redis, scheduler, Prometheus, InfluxDB, and Grafana |
+| `compose-backend.yml` | Runs backend API and worker services that connect to the data node |
+| `compose-frontend.yml` | Runs the frontend service |
+
+Before using the distributed Compose files, update service IP addresses and environment variables to match the target machines. In particular:
+
+- `DATABASE_URL` should point to the machine running MySQL.
+- `REDIS_HOST` should point to the machine running Redis.
+- `VITE_API_URL` should point to the public API endpoint or load balancer used by the browser.
+
+Example startup commands:
+
+```powershell
+# On the data node
+docker compose -f compose-data.yml up -d --build
+
+# On the backend node
+docker compose -f compose-backend.yml up -d --build
+
+# On the frontend node
+docker compose -f compose-frontend.yml up -d --build
+```
+
+## Troubleshooting
+
+### Frontend Shows `Failed to fetch`
+
+Check the backend health endpoint:
+
+```powershell
+curl.exe http://localhost:8000/api/health
+```
+
+If the backend is healthy, verify the frontend API target:
+
+- Docker frontend: use `http://localhost:3000`
+- Local Vite frontend: confirm `frontend/vite.config.ts` proxies `/api` to the correct backend URL
+- Distributed frontend: confirm `VITE_API_URL` points to the reachable API or load balancer
+
+### Backend Cannot Connect to MySQL
+
+Check the following:
+
+- `backend/.env` exists.
+- `DATABASE_URL` is set.
+- Docker Compose mode uses `db` as the MySQL host.
+- Local Python mode uses `localhost` or another host-accessible MySQL address.
+- Existing Docker volumes may contain old schemas; restart or recreate volumes only when you intentionally want a clean database.
+
+### Redis Queue Is Not Consumed
+
+Check the following:
+
+- `redis` service is running.
+- `worker` service is running.
+- Backend and worker use the same `REDIS_HOST`, `REDIS_PORT`, and `JOB_QUEUE_NAME`.
+- Worker logs do not show task validation or execution errors.
+
+### Password Reset Email Fails
+
+For Gmail SMTP:
+
+1. Enable 2-Step Verification on the sender account.
+2. Create a Gmail App Password.
+3. Use the full sender email as `SMTP_USERNAME`.
+4. Use the 16-character app password as `SMTP_PASSWORD`.
+5. Restart the backend after changing environment variables:
+
+```powershell
 docker compose restart backend
 ```
 
-若有 dependency 或 Dockerfile 變更，請重新 build：
+### Code Changes Do Not Take Effect
 
-```bash
-docker compose up -d --build backend
+Restart the affected service:
+
+```powershell
+docker compose restart backend
+docker compose restart worker
+docker compose restart scheduler
+```
+
+If dependencies, Dockerfiles, or build configuration changed, rebuild:
+
+```powershell
+docker compose up -d --build
 ```
