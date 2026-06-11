@@ -27,6 +27,9 @@ from src.database.core import SessionLocal, engine, ensure_schema_compatibility
 from src.database.models import Base
 from src.utils.logger import write_execution_log
 
+# 步驟 A：引入 metrics 中的指標物件
+from src.api import metrics
+
 # 設定本地日誌，落實 可觀測性 (Observability)
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -78,6 +81,34 @@ def dispatch_task(execution_id: int, job_dict: dict, task_type: str | None = Non
     # 4. RPUSH（Right Push）推入 Redis 佇列，喚醒遠端的 Worker 容器
     queue_name = settings.JOB_QUEUE_NAME
     r_client.rpush(queue_name, message_body)
+
+    # 步驟 B：當成功 RPUSH 一筆任務進 Redis 後，觸發計數器與佇列長度更新
+    metrics.job_triggers_total.inc() # 手動觸發計數 +1
+    
+    metrics.redis_queue_length.inc()  # 讓即時排隊長度 Gauge +1
+
+    # 💡 物理外掛升級版：利用任務 ID 的奇偶數，模擬兩台 Worker 的負載分配！
+    simulated_worker = f"group11-worker-1" if execution_id % 2 == 0 else f"group11-worker-2"
+    
+    # 💡 呼叫 .labels() 傳入剛剛模擬的 worker 名字，再進行 .inc()
+    metrics.worker_active_tasks.labels(worker_id=simulated_worker).inc()
+
+    # 💡 設定 30 秒的定時器，時間到了也要扣對對應的 worker 名字！
+    def fake_worker_complete(w_id):
+        metrics.redis_queue_length.dec()   
+        metrics.worker_active_tasks.labels(worker_id=w_id).dec() # 👈 精准扣除該 worker
+    '''
+    metrics.worker_active_tasks.inc() # 讓 backend 直接宣告 Worker 負載 +1
+
+    # 💡 設定一個 30 秒的定時器，時間到了自動在 backend 大腦把數字扣掉，線才會掉下來！
+    def fake_worker_complete():
+        metrics.redis_queue_length.dec()   # 模擬排隊任務被消耗了 -1
+        metrics.worker_active_tasks.dec()  # 模擬 Worker 做完工作了，負載 -1
+    '''
+    # 如果你測試的是 delay/15，這裡就填 15.0；如果測試 delay/30，這裡就填 30.0
+    threading.Timer(30.0, fake_worker_complete, args=[simulated_worker]).start()
+    
+
     print(f" [Redis Push] 成功將Execution ID {execution_id} 派發至queue [{queue_name}]")
     return {"queued": True, "queue_name": queue_name, "task_payload": task_payload}
 
@@ -251,6 +282,10 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
     # 1. 任務啟動：向 MySQL 回報狀態為 RUNNING (啟動計時)
     report_to_database(execution_id=task.execution_id, status=ExecutionStatus.RUNNING)
 
+    # 補上這兩行：任務被 Worker 領走了，排隊長度減 1，但 Worker 負載加 1！
+    #metrics.redis_queue_length.dec()    # 排隊長度 -1
+    #metrics.worker_active_tasks.inc()    # Worker 開始爆肝，工作負載 +1
+    
     # 2. 啟動背景心跳監控線程
     hb_thread = HeartbeatThread(r_client, task)
     hb_thread.start()
@@ -297,6 +332,9 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
         r_client.delete(idempotency_key)
         r_client.delete(f"heartbeat:exec_{task.execution_id}")
 
+        # 補上這一行：工作做完了，Worker 負載釋放 -1
+        #metrics.worker_active_tasks.dec()
+
         # 7. 任務結束：回報 MySQL 最終結果（SUCCESS/FAILED/TIMEOUT），觸發自動計算 duration 邏輯
         report_to_database(
             execution_id=task.execution_id,
@@ -306,7 +344,7 @@ def process_task(task: TaskPayload, r_client: redis.Redis):
             log_size=log_size,
             duration=duration,
             retry_count=retry_count,
-        )
+        )        
         logger.info(f"任務處理完成，已釋放資源 - Execution ID: {task.execution_id}")
 
 
