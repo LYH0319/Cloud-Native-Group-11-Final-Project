@@ -37,6 +37,18 @@ estimated_usage = Gauge(
     ["tier", "category"],
 )
 
+# 補上這兩個全新動態指標
+redis_queue_length = Gauge(
+    "app_redis_queue_length",
+    "Current number of tasks waiting in the Redis queue"
+)
+
+worker_active_tasks = Gauge(
+    "app_worker_active_tasks",
+    "Current number of tasks concurrently running on workers",
+    ["worker_id"]
+)
+
 _ESTIMATED_USAGE = {
     ("small_team", "registered_users"): 20,
     ("small_team", "daily_api_requests"): 100,

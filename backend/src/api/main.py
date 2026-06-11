@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import OperationalError
 
 from src.api.routers import auth, history, jobs
+# 步驟 A：把 metrics 路由與中介軟體模組引入進來
+from src.api import metrics
 
 from src.database.connection import Base, engine
 from src.database.core import ensure_default_admin, ensure_schema_compatibility
@@ -16,6 +18,9 @@ app = FastAPI(
         "and worker result reporting."
     ),
 )
+
+# 步驟 B：讓系統自動統計所有 API 的流量
+app.add_middleware(metrics.PrometheusMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,7 +36,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# app.add_middleware(metrics.PrometheusMiddleware)
 
 
 @app.on_event("startup")
@@ -65,4 +69,6 @@ def root():
 app.include_router(auth.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
-# app.include_router(metrics.router)
+
+# 步驟 C：註冊 /metrics 路由供 Prometheus 抄筆記
+app.include_router(metrics.router)
